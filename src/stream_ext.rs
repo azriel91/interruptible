@@ -4,13 +4,13 @@ use crate::InterruptSafeStream;
 
 /// Provides the `.interrupt_safe()` method for `Stream`s to stop producing
 /// values when an interrupt signal is received.
-pub trait StreamInterruptExt {
+pub trait StreamExt {
     fn interrupt_safe(self) -> InterruptSafeStream<Self>
     where
         Self: Sized;
 }
 
-impl<S> StreamInterruptExt for S
+impl<S> StreamExt for S
 where
     S: Stream,
 {

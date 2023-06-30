@@ -1,0 +1,18 @@
+[package]
+name = "stream_interrupt"
+version = "0.1.0"
+description = "Stops a stream from producing values when an interrupt signal is received."
+documentation = "https://docs.rs/stream_interrupt/"
+authors = ["Azriel Hoh <azriel91@gmail.com>"]
+edition = "2021"
+homepage = "https://github.com/azriel91/stream_interrupt"
+repository = "https://github.com/azriel91/stream_interrupt"
+readme = "README.md"
+categories = ["asynchronous"]
+keywords = ["interrupt", "stream"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+futures = "0.3.28"
+stream-cancel = "0.8.1"
+tokio = { version = "1", features = ["signal"] }

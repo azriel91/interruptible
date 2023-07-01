@@ -4,17 +4,24 @@
 //! [`stream-cancel`], and stops a stream from producing values when `Ctrl C` is
 //! received.
 //!
-//! ⚠️ **Important:** On Unix, `stream.interrupt_safe()` will cause `tokio` to
+//! ⚠️ **Important:** On Unix, `stream.interruptible()` will cause `tokio` to
 //! handle all `SIGINT` events, as once a signal handler is registered for a
 //! given process, it can never be unregistered.
 //!
 //! [`stream-cancel`]: https://github.com/jonhoo/stream-cancel
 //! [`tokio::signal::ctrl_c`]: https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html
 
-pub use crate::{interrupt_safe_stream::InterruptSafeStream, stream_ext::StreamExt};
+pub use crate::{
+    future_ext::FutureExt, interruptible_control_future::InterruptibleControlFuture,
+    interruptible_result_future::InterruptibleResultFuture,
+    interruptible_stream::InterruptibleStream, stream_ext::StreamExt,
+};
 
 pub(crate) use crate::interrupt_guard::InterruptGuard;
 
+mod future_ext;
 mod interrupt_guard;
-mod interrupt_safe_stream;
+mod interruptible_control_future;
+mod interruptible_result_future;
+mod interruptible_stream;
 mod stream_ext;

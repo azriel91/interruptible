@@ -1,11 +1,11 @@
 use futures::stream::Stream;
 
-use crate::InterruptSafeStream;
+use crate::InterruptibleStream;
 
-/// Provides the `.interrupt_safe()` method for `Stream`s to stop producing
+/// Provides the `.interruptible()` method for `Stream`s to stop producing
 /// values when an interrupt signal is received.
 pub trait StreamExt {
-    fn interrupt_safe(self) -> InterruptSafeStream<Self>
+    fn interruptible(self) -> InterruptibleStream<Self>
     where
         Self: Sized;
 }
@@ -14,10 +14,10 @@ impl<S> StreamExt for S
 where
     S: Stream,
 {
-    fn interrupt_safe(self) -> InterruptSafeStream<Self>
+    fn interruptible(self) -> InterruptibleStream<Self>
     where
         Self: Sized,
     {
-        InterruptSafeStream::new(self)
+        InterruptibleStream::new(self)
     }
 }

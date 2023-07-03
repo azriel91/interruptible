@@ -7,20 +7,20 @@ use futures::{
 use tokio::sync::oneshot::{error::TryRecvError, Receiver};
 
 #[derive(Debug)]
-pub struct InterruptibleControlFuture<Fut> {
+pub struct InterruptibleFutureControl<Fut> {
     /// Underlying future that returns a value and `ControlFlow`.
     future: Fut,
     /// Receiver for interrupt signal.
     interrupt_rx: Receiver<()>,
 }
 
-impl<Fut> InterruptibleControlFuture<Fut>
+impl<Fut> InterruptibleFutureControl<Fut>
 where
     Fut: Future<Output = ControlFlow<(), ()>>,
 {
-    /// Returns a new `InterruptibleControlFuture`, wrapping the provided
+    /// Returns a new `InterruptibleFutureControl`, wrapping the provided
     /// future.
-    pub(crate) fn new(future: Fut) -> InterruptibleControlFuture<Fut> {
+    pub(crate) fn new(future: Fut) -> InterruptibleFutureControl<Fut> {
         let (interrupt_tx, interrupt_rx) = tokio::sync::oneshot::channel::<()>();
 
         tokio::task::spawn(async move {
@@ -38,7 +38,7 @@ where
     }
 }
 
-impl<Fut> Future for InterruptibleControlFuture<Fut>
+impl<Fut> Future for InterruptibleFutureControl<Fut>
 where
     Fut: Future<Output = ControlFlow<(), ()>> + std::marker::Unpin,
 {

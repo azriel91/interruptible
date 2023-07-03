@@ -2,7 +2,7 @@ use std::{marker::Unpin, ops::ControlFlow};
 
 use futures::future::Future;
 
-use crate::{InterruptibleControlFuture, InterruptibleResultFuture};
+use crate::{InterruptibleControlFuture, InterruptibleFutureResult};
 
 /// Provides the `.interruptible_control()` and `.interruptible_result()`
 /// methods for `Future`s to return [`ControlFlow::Break`] or [`Result::Err`]
@@ -12,7 +12,7 @@ pub trait FutureExt {
     where
         Self: Sized + Future<Output = ControlFlow<(), ()>>;
 
-    fn interruptible_result(self) -> InterruptibleResultFuture<Self>
+    fn interruptible_result(self) -> InterruptibleFutureResult<Self>
     where
         Self: Sized + Future<Output = Result<(), ()>> + Unpin;
 }
@@ -28,10 +28,10 @@ where
         InterruptibleControlFuture::new(self)
     }
 
-    fn interruptible_result(self) -> InterruptibleResultFuture<Self>
+    fn interruptible_result(self) -> InterruptibleFutureResult<Self>
     where
         Self: Sized + Future<Output = Result<(), ()>> + Unpin,
     {
-        InterruptibleResultFuture::new(self)
+        InterruptibleFutureResult::new(self)
     }
 }

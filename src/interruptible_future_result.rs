@@ -7,7 +7,7 @@ use futures::{
 use tokio::sync::oneshot::{error::TryRecvError, Receiver};
 
 #[derive(Debug)]
-pub struct InterruptibleResultFuture<Fut>
+pub struct InterruptibleFutureResult<Fut>
 where
     Fut: Future<Output = Result<(), ()>>,
 {
@@ -17,12 +17,12 @@ where
     interrupt_rx: Receiver<()>,
 }
 
-impl<Fut> InterruptibleResultFuture<Fut>
+impl<Fut> InterruptibleFutureResult<Fut>
 where
     Fut: Future<Output = Result<(), ()>>,
 {
-    /// Returns a new `InterruptSafeResultFuture`, wrapping the provided future.
-    pub(crate) fn new(future: Fut) -> InterruptibleResultFuture<Fut> {
+    /// Returns a new `InterruptibleFutureResult`, wrapping the provided future.
+    pub(crate) fn new(future: Fut) -> InterruptibleFutureResult<Fut> {
         let (interrupt_tx, interrupt_rx) = tokio::sync::oneshot::channel::<()>();
 
         tokio::task::spawn(async move {
@@ -40,7 +40,7 @@ where
     }
 }
 
-impl<Fut> Future for InterruptibleResultFuture<Fut>
+impl<Fut> Future for InterruptibleFutureResult<Fut>
 where
     Fut: Future<Output = Result<(), ()>> + Unpin,
 {

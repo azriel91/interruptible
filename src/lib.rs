@@ -13,7 +13,7 @@
 
 pub use crate::{
     future_ext::FutureExt, interruptible_control_future::InterruptibleControlFuture,
-    interruptible_result_future::InterruptibleResultFuture,
+    interruptible_future_result::InterruptibleFutureResult,
     interruptible_stream::InterruptibleStream, stream_ext::StreamExt,
 };
 
@@ -22,6 +22,6 @@ pub(crate) use crate::interrupt_guard::InterruptGuard;
 mod future_ext;
 mod interrupt_guard;
 mod interruptible_control_future;
-mod interruptible_result_future;
+mod interruptible_future_result;
 mod interruptible_stream;
 mod stream_ext;

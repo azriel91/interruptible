@@ -7,7 +7,7 @@ use crate::{InterruptibleFutureControl, InterruptibleFutureResult};
 /// Provides the `.interruptible_control()` and `.interruptible_result()`
 /// methods for `Future`s to return [`ControlFlow::Break`] or [`Result::Err`]
 /// when an interrupt signal is received.
-pub trait FutureExt {
+pub trait InterruptibleFutureExt {
     fn interruptible_control(self) -> InterruptibleFutureControl<Self>
     where
         Self: Sized + Future<Output = ControlFlow<(), ()>>;
@@ -17,7 +17,7 @@ pub trait FutureExt {
         Self: Sized + Future<Output = Result<(), ()>> + Unpin;
 }
 
-impl<Fut> FutureExt for Fut
+impl<Fut> InterruptibleFutureExt for Fut
 where
     Fut: Future,
 {

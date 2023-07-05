@@ -6,8 +6,6 @@ use futures::{
 };
 use stream_cancel::Valved;
 
-use crate::InterruptGuard;
-
 #[derive(Debug)]
 pub struct InterruptibleStream<S> {
     /// Underlying stream that produces values.
@@ -18,12 +16,8 @@ impl<S> InterruptibleStream<S>
 where
     S: Stream,
 {
-    /// Returns a new `InterruptSafeStream`, wrapping the provided stream.
-    pub(crate) fn new(stream_valved: S) -> InterruptibleStream<S> {
-        let (stream_trigger, stream_valved) = Valved::new(stream_valved);
-        let interrupt_guard = InterruptGuard::new(stream_trigger);
-        tokio::task::spawn(interrupt_guard.wait_for_signal());
-
+    /// Returns a new `InterruptibleStream`, wrapping the provided stream.
+    pub(crate) fn new(stream_valved: Valved<S>) -> InterruptibleStream<S> {
         Self { stream_valved }
     }
 }

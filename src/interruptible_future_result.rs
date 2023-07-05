@@ -22,17 +22,7 @@ where
     Fut: Future<Output = Result<(), ()>>,
 {
     /// Returns a new `InterruptibleFutureResult`, wrapping the provided future.
-    pub(crate) fn new(future: Fut) -> InterruptibleFutureResult<Fut> {
-        let (interrupt_tx, interrupt_rx) = tokio::sync::oneshot::channel::<()>();
-
-        tokio::task::spawn(async move {
-            tokio::signal::ctrl_c()
-                .await
-                .expect("Failed to initialize signal handler for SIGINT");
-
-            let (Ok(()) | Err(())) = interrupt_tx.send(());
-        });
-
+    pub(crate) fn new(future: Fut, interrupt_rx: Receiver<()>) -> InterruptibleFutureResult<Fut> {
         Self {
             future,
             interrupt_rx,

@@ -14,5 +14,10 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 futures = "0.3.28"
-stream-cancel = "0.8.1"
-tokio = { version = "1", features = ["rt", "signal"] }
+stream-cancel = { version = "0.8.1", optional = true }
+tokio = { version = "1", features = ["sync"] }
+
+[features]
+default = []
+stream = ["dep:stream-cancel", "tokio/rt"]
+ctrl_c = ["tokio/rt", "tokio/signal"]

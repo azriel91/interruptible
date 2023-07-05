@@ -14,7 +14,7 @@
 //! [`tokio::signal::ctrl_c`]: https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html
 
 pub use crate::{
-    interruptible_future_control::InterruptibleFutureControl,
+    interrupt_signal::InterruptSignal, interruptible_future_control::InterruptibleFutureControl,
     interruptible_future_ext::InterruptibleFutureExt,
     interruptible_future_result::InterruptibleFutureResult,
 };
@@ -23,6 +23,7 @@ pub use crate::{
     interruptible_stream::InterruptibleStream, interruptible_stream_ext::InterruptibleStreamExt,
 };
 
+mod interrupt_signal;
 mod interruptible_future_control;
 mod interruptible_future_ext;
 mod interruptible_future_result;

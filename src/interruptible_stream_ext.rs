@@ -2,12 +2,15 @@ use futures::stream::Stream;
 use stream_cancel::Valved;
 use tokio::sync::oneshot;
 
-use crate::InterruptibleStream;
+use crate::{InterruptSignal, InterruptibleStream};
 
 /// Provides the `.interruptible()` method for `Stream`s to stop producing
 /// values when an interrupt signal is received.
 pub trait InterruptibleStreamExt {
-    fn interruptible(self, interrupt_rx: oneshot::Receiver<()>) -> InterruptibleStream<Self>
+    fn interruptible(
+        self,
+        interrupt_rx: oneshot::Receiver<InterruptSignal>,
+    ) -> InterruptibleStream<Self>
     where
         Self: Sized;
 
@@ -21,13 +24,16 @@ impl<S> InterruptibleStreamExt for S
 where
     S: Stream,
 {
-    fn interruptible(self, interrupt_rx: oneshot::Receiver<()>) -> InterruptibleStream<Self>
+    fn interruptible(
+        self,
+        interrupt_rx: oneshot::Receiver<InterruptSignal>,
+    ) -> InterruptibleStream<Self>
     where
         Self: Sized,
     {
         let (stream_trigger, stream_valved) = Valved::new(self);
         tokio::task::spawn(async move {
-            let (Ok(()) | Err(_)) = interrupt_rx.await;
+            let (Ok(InterruptSignal) | Err(_)) = interrupt_rx.await;
 
             drop(stream_trigger);
         });

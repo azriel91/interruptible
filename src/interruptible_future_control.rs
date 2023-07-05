@@ -4,14 +4,16 @@ use futures::{
     future::Future,
     task::{Context, Poll},
 };
-use tokio::sync::oneshot::{error::TryRecvError, Receiver};
+use tokio::sync::oneshot::{self, error::TryRecvError};
+
+use crate::InterruptSignal;
 
 #[derive(Debug)]
 pub struct InterruptibleFutureControl<Fut> {
     /// Underlying future that returns a value and `ControlFlow`.
     future: Fut,
     /// Receiver for interrupt signal.
-    interrupt_rx: Receiver<()>,
+    interrupt_rx: oneshot::Receiver<InterruptSignal>,
 }
 
 impl<Fut> InterruptibleFutureControl<Fut>
@@ -20,7 +22,10 @@ where
 {
     /// Returns a new `InterruptibleFutureControl`, wrapping the provided
     /// future.
-    pub(crate) fn new(future: Fut, interrupt_rx: Receiver<()>) -> InterruptibleFutureControl<Fut> {
+    pub(crate) fn new(
+        future: Fut,
+        interrupt_rx: oneshot::Receiver<InterruptSignal>,
+    ) -> InterruptibleFutureControl<Fut> {
         Self {
             future,
             interrupt_rx,
@@ -37,7 +42,7 @@ where
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.future).poll(cx).map(|control_flow| {
             match self.interrupt_rx.try_recv() {
-                Ok(()) => {
+                Ok(InterruptSignal) => {
                     // Interrupt received, return `ControlFlow::Break`
                     ControlFlow::Break(())
                 }

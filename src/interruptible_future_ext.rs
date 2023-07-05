@@ -3,7 +3,7 @@ use std::{marker::Unpin, ops::ControlFlow};
 use futures::future::Future;
 use tokio::sync::oneshot;
 
-use crate::{InterruptibleFutureControl, InterruptibleFutureResult};
+use crate::{InterruptSignal, InterruptibleFutureControl, InterruptibleFutureResult};
 
 /// Provides the `.interruptible_control()` and `.interruptible_result()`
 /// methods for `Future`s to return [`ControlFlow::Break`] or [`Result::Err`]
@@ -11,14 +11,14 @@ use crate::{InterruptibleFutureControl, InterruptibleFutureResult};
 pub trait InterruptibleFutureExt {
     fn interruptible_control(
         self,
-        interrupt_rx: oneshot::Receiver<()>,
+        interrupt_rx: oneshot::Receiver<InterruptSignal>,
     ) -> InterruptibleFutureControl<Self>
     where
         Self: Sized + Future<Output = ControlFlow<(), ()>>;
 
     fn interruptible_result(
         self,
-        interrupt_rx: oneshot::Receiver<()>,
+        interrupt_rx: oneshot::Receiver<InterruptSignal>,
     ) -> InterruptibleFutureResult<Self>
     where
         Self: Sized + Future<Output = Result<(), ()>> + Unpin;
@@ -40,7 +40,7 @@ where
 {
     fn interruptible_control(
         self,
-        interrupt_rx: oneshot::Receiver<()>,
+        interrupt_rx: oneshot::Receiver<InterruptSignal>,
     ) -> InterruptibleFutureControl<Self>
     where
         Self: Sized + Future<Output = ControlFlow<(), ()>>,
@@ -50,7 +50,7 @@ where
 
     fn interruptible_result(
         self,
-        interrupt_rx: oneshot::Receiver<()>,
+        interrupt_rx: oneshot::Receiver<InterruptSignal>,
     ) -> InterruptibleFutureResult<Self>
     where
         Self: Sized + Future<Output = Result<(), ()>> + Unpin,
@@ -63,14 +63,14 @@ where
     where
         Self: Sized + Future<Output = ControlFlow<(), ()>>,
     {
-        let (interrupt_tx, interrupt_rx) = oneshot::channel::<()>();
+        let (interrupt_tx, interrupt_rx) = oneshot::channel::<InterruptSignal>();
 
         tokio::task::spawn(async move {
             tokio::signal::ctrl_c()
                 .await
                 .expect("Failed to initialize signal handler for SIGINT");
 
-            let (Ok(()) | Err(())) = interrupt_tx.send(());
+            let (Ok(()) | Err(InterruptSignal)) = interrupt_tx.send(InterruptSignal);
         });
 
         InterruptibleFutureControl::new(self, interrupt_rx)
@@ -81,14 +81,14 @@ where
     where
         Self: Sized + Future<Output = Result<(), ()>> + Unpin,
     {
-        let (interrupt_tx, interrupt_rx) = oneshot::channel::<()>();
+        let (interrupt_tx, interrupt_rx) = oneshot::channel::<InterruptSignal>();
 
         tokio::task::spawn(async move {
             tokio::signal::ctrl_c()
                 .await
                 .expect("Failed to initialize signal handler for SIGINT");
 
-            let (Ok(()) | Err(())) = interrupt_tx.send(());
+            let (Ok(()) | Err(InterruptSignal)) = interrupt_tx.send(InterruptSignal);
         });
 
         InterruptibleFutureResult::new(self, interrupt_rx)

@@ -20,9 +20,9 @@ pub trait InterruptibleFutureExt<B> {
     fn interruptible_result(
         self,
         interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureResult<Self>
+    ) -> InterruptibleFutureResult<B, Self>
     where
-        Self: Sized + Future<Output = Result<(), ()>> + Unpin;
+        Self: Sized + Future<Output = Result<B, ()>> + Unpin;
 
     #[cfg(feature = "ctrl_c")]
     fn interruptible_control_ctrl_c(self) -> InterruptibleFutureControl<B, Self>
@@ -31,9 +31,9 @@ pub trait InterruptibleFutureExt<B> {
         B: From<InterruptSignal>;
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<Self>
+    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<B, Self>
     where
-        Self: Sized + Future<Output = Result<(), ()>> + Unpin;
+        Self: Sized + Future<Output = Result<B, ()>> + Unpin;
 }
 
 impl<B, Fut> InterruptibleFutureExt<B> for Fut
@@ -54,9 +54,9 @@ where
     fn interruptible_result(
         self,
         interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureResult<Self>
+    ) -> InterruptibleFutureResult<B, Self>
     where
-        Self: Sized + Future<Output = Result<(), ()>> + Unpin,
+        Self: Sized + Future<Output = Result<B, ()>> + Unpin,
     {
         InterruptibleFutureResult::new(self, interrupt_rx)
     }
@@ -81,9 +81,9 @@ where
     }
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<Self>
+    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<B, Self>
     where
-        Self: Sized + Future<Output = Result<(), ()>> + Unpin,
+        Self: Sized + Future<Output = Result<B, ()>> + Unpin,
     {
         let (interrupt_tx, interrupt_rx) = oneshot::channel::<InterruptSignal>();
 

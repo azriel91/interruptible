@@ -1,4 +1,8 @@
-use std::{ops::ControlFlow, pin::Pin};
+use std::{
+    marker::{PhantomData, Unpin},
+    ops::ControlFlow,
+    pin::Pin,
+};
 
 use futures::{
     future::Future,
@@ -9,33 +13,37 @@ use tokio::sync::oneshot::{self, error::TryRecvError};
 use crate::InterruptSignal;
 
 #[derive(Debug)]
-pub struct InterruptibleFutureControl<Fut> {
+pub struct InterruptibleFutureControl<B, Fut> {
     /// Underlying future that returns a value and `ControlFlow`.
     future: Fut,
     /// Receiver for interrupt signal.
     interrupt_rx: oneshot::Receiver<InterruptSignal>,
+    /// Marker.
+    marker: PhantomData<B>,
 }
 
-impl<Fut> InterruptibleFutureControl<Fut>
+impl<B, Fut> InterruptibleFutureControl<B, Fut>
 where
-    Fut: Future<Output = ControlFlow<(), ()>>,
+    Fut: Future<Output = ControlFlow<B, ()>>,
 {
     /// Returns a new `InterruptibleFutureControl`, wrapping the provided
     /// future.
-    pub(crate) fn new(
-        future: Fut,
-        interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureControl<Fut> {
+    pub(crate) fn new(future: Fut, interrupt_rx: oneshot::Receiver<InterruptSignal>) -> Self {
         Self {
             future,
             interrupt_rx,
+            marker: PhantomData,
         }
     }
 }
 
-impl<Fut> Future for InterruptibleFutureControl<Fut>
+// `B` does not need to be `Unpin` as it is only used in `PhantomData`.
+impl<B, Fut> Unpin for InterruptibleFutureControl<B, Fut> where Fut: Unpin {}
+
+impl<B, Fut> Future for InterruptibleFutureControl<B, Fut>
 where
-    Fut: Future<Output = ControlFlow<(), ()>> + std::marker::Unpin,
+    Fut: Future<Output = ControlFlow<B, ()>> + Unpin,
+    B: From<InterruptSignal>,
 {
     type Output = Fut::Output;
 
@@ -44,7 +52,7 @@ where
             match self.interrupt_rx.try_recv() {
                 Ok(InterruptSignal) => {
                     // Interrupt received, return `ControlFlow::Break`
-                    ControlFlow::Break(())
+                    ControlFlow::Break(B::from(InterruptSignal))
                 }
                 Err(TryRecvError::Empty) | Err(TryRecvError::Closed) => {
                     // Interrupt not received, return the future's actual `ControlFlow`.

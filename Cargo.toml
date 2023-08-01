@@ -12,10 +12,16 @@ categories = ["asynchronous"]
 keywords = ["interrupt", "stream"]
 license = "MIT OR Apache-2.0"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 futures = "0.3.28"
 stream-cancel = { version = "0.8.1", optional = true }
 tokio = { version = "1", features = ["sync"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.87"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "time"] }

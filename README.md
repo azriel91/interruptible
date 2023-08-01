@@ -33,7 +33,7 @@ interruptible = { version = "0.0.1", features = ["stream"] }
 
 ### Code
 
-#### `Future<Output = ControlFlow<B, C>>``
+#### `Future<Output = ControlFlow<B, C>>`
 
 ```rust
 use std::ops::ControlFlow;

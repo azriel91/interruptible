@@ -13,18 +13,18 @@ use tokio::sync::oneshot::{self, error::TryRecvError};
 use crate::InterruptSignal;
 
 #[derive(Debug)]
-pub struct InterruptibleFutureControl<B, Fut> {
+pub struct InterruptibleFutureControl<B, T, Fut> {
     /// Underlying future that returns a value and `ControlFlow`.
     future: Fut,
     /// Receiver for interrupt signal.
     interrupt_rx: oneshot::Receiver<InterruptSignal>,
     /// Marker.
-    marker: PhantomData<B>,
+    marker: PhantomData<(B, T)>,
 }
 
-impl<B, Fut> InterruptibleFutureControl<B, Fut>
+impl<B, T, Fut> InterruptibleFutureControl<B, T, Fut>
 where
-    Fut: Future<Output = ControlFlow<B, ()>>,
+    Fut: Future<Output = ControlFlow<B, T>>,
 {
     /// Returns a new `InterruptibleFutureControl`, wrapping the provided
     /// future.
@@ -38,11 +38,11 @@ where
 }
 
 // `B` does not need to be `Unpin` as it is only used in `PhantomData`.
-impl<B, Fut> Unpin for InterruptibleFutureControl<B, Fut> where Fut: Unpin {}
+impl<B, T, Fut> Unpin for InterruptibleFutureControl<B, T, Fut> where Fut: Unpin {}
 
-impl<B, Fut> Future for InterruptibleFutureControl<B, Fut>
+impl<B, T, Fut> Future for InterruptibleFutureControl<B, T, Fut>
 where
-    Fut: Future<Output = ControlFlow<B, ()>> + Unpin,
+    Fut: Future<Output = ControlFlow<B, T>> + Unpin,
     B: From<InterruptSignal>,
 {
     type Output = Fut::Output;

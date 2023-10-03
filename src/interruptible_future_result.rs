@@ -9,9 +9,9 @@ use tokio::sync::oneshot::{self, error::TryRecvError};
 use crate::InterruptSignal;
 
 #[derive(Debug)]
-pub struct InterruptibleFutureResult<T, Fut>
+pub struct InterruptibleFutureResult<T, E, Fut>
 where
-    Fut: Future<Output = Result<T, ()>>,
+    Fut: Future<Output = Result<T, E>>,
 {
     /// Underlying future that returns a value and `Result`.
     future: Fut,
@@ -19,15 +19,15 @@ where
     interrupt_rx: oneshot::Receiver<InterruptSignal>,
 }
 
-impl<T, Fut> InterruptibleFutureResult<T, Fut>
+impl<T, E, Fut> InterruptibleFutureResult<T, E, Fut>
 where
-    Fut: Future<Output = Result<T, ()>>,
+    Fut: Future<Output = Result<T, E>>,
 {
     /// Returns a new `InterruptibleFutureResult`, wrapping the provided future.
     pub(crate) fn new(
         future: Fut,
         interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureResult<T, Fut> {
+    ) -> InterruptibleFutureResult<T, E, Fut> {
         Self {
             future,
             interrupt_rx,
@@ -35,9 +35,10 @@ where
     }
 }
 
-impl<T, Fut> Future for InterruptibleFutureResult<T, Fut>
+impl<T, E, Fut> Future for InterruptibleFutureResult<T, E, Fut>
 where
-    Fut: Future<Output = Result<T, ()>> + Unpin,
+    Fut: Future<Output = Result<T, E>> + Unpin,
+    E: From<InterruptSignal>,
 {
     type Output = Fut::Output;
 
@@ -46,7 +47,7 @@ where
             match self.interrupt_rx.try_recv() {
                 Ok(InterruptSignal) => {
                     // Interrupt received, return `Result::Err`
-                    Result::Err(())
+                    Result::Err(E::from(InterruptSignal))
                 }
                 Err(TryRecvError::Empty) | Err(TryRecvError::Closed) => {
                     // Interrupt not received, return the future's actual `Result`.

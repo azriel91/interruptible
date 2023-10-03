@@ -8,44 +8,44 @@ use crate::{InterruptSignal, InterruptibleFutureControl, InterruptibleFutureResu
 /// Provides the `.interruptible_control()` and `.interruptible_result()`
 /// methods for `Future`s to return [`ControlFlow::Break`] or [`Result::Err`]
 /// when an interrupt signal is received.
-pub trait InterruptibleFutureExt<B> {
+pub trait InterruptibleFutureExt<B, T> {
     fn interruptible_control(
         self,
         interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureControl<B, Self>
+    ) -> InterruptibleFutureControl<B, T, Self>
     where
-        Self: Sized + Future<Output = ControlFlow<B, ()>>,
+        Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<InterruptSignal>;
 
     fn interruptible_result(
         self,
         interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureResult<B, Self>
+    ) -> InterruptibleFutureResult<T, B, Self>
     where
-        Self: Sized + Future<Output = Result<B, ()>> + Unpin;
+        Self: Sized + Future<Output = Result<T, B>> + Unpin;
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_control_ctrl_c(self) -> InterruptibleFutureControl<B, Self>
+    fn interruptible_control_ctrl_c(self) -> InterruptibleFutureControl<B, T, Self>
     where
-        Self: Sized + Future<Output = ControlFlow<B, ()>>,
+        Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<InterruptSignal>;
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<B, Self>
+    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<T, B, Self>
     where
-        Self: Sized + Future<Output = Result<B, ()>> + Unpin;
+        Self: Sized + Future<Output = Result<T, B>> + Unpin;
 }
 
-impl<B, Fut> InterruptibleFutureExt<B> for Fut
+impl<B, T, Fut> InterruptibleFutureExt<B, T> for Fut
 where
     Fut: Future,
 {
     fn interruptible_control(
         self,
         interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureControl<B, Self>
+    ) -> InterruptibleFutureControl<B, T, Self>
     where
-        Self: Sized + Future<Output = ControlFlow<B, ()>>,
+        Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<InterruptSignal>,
     {
         InterruptibleFutureControl::new(self, interrupt_rx)
@@ -54,17 +54,17 @@ where
     fn interruptible_result(
         self,
         interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureResult<B, Self>
+    ) -> InterruptibleFutureResult<T, B, Self>
     where
-        Self: Sized + Future<Output = Result<B, ()>> + Unpin,
+        Self: Sized + Future<Output = Result<T, B>> + Unpin,
     {
         InterruptibleFutureResult::new(self, interrupt_rx)
     }
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_control_ctrl_c(self) -> InterruptibleFutureControl<B, Self>
+    fn interruptible_control_ctrl_c(self) -> InterruptibleFutureControl<B, T, Self>
     where
-        Self: Sized + Future<Output = ControlFlow<B, ()>>,
+        Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<InterruptSignal>,
     {
         let (interrupt_tx, interrupt_rx) = oneshot::channel::<InterruptSignal>();
@@ -81,9 +81,9 @@ where
     }
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<B, Self>
+    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<T, B, Self>
     where
-        Self: Sized + Future<Output = Result<B, ()>> + Unpin,
+        Self: Sized + Future<Output = Result<T, B>> + Unpin,
     {
         let (interrupt_tx, interrupt_rx) = oneshot::channel::<InterruptSignal>();
 

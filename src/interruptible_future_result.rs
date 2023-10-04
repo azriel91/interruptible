@@ -6,28 +6,28 @@ use futures::{
 };
 use tokio::sync::oneshot::{self, error::TryRecvError};
 
-use crate::InterruptSignal;
+use crate::{InterruptSignal, OwnedOrMutRef};
 
 #[derive(Debug)]
-pub struct InterruptibleFutureResult<T, E, Fut>
+pub struct InterruptibleFutureResult<'rx, T, E, Fut>
 where
     Fut: Future<Output = Result<T, E>>,
 {
     /// Underlying future that returns a value and `Result`.
     future: Fut,
     /// Receiver for interrupt signal.
-    interrupt_rx: oneshot::Receiver<InterruptSignal>,
+    interrupt_rx: OwnedOrMutRef<'rx, oneshot::Receiver<InterruptSignal>>,
 }
 
-impl<T, E, Fut> InterruptibleFutureResult<T, E, Fut>
+impl<'rx, T, E, Fut> InterruptibleFutureResult<'rx, T, E, Fut>
 where
     Fut: Future<Output = Result<T, E>>,
 {
     /// Returns a new `InterruptibleFutureResult`, wrapping the provided future.
     pub(crate) fn new(
         future: Fut,
-        interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureResult<T, E, Fut> {
+        interrupt_rx: OwnedOrMutRef<'rx, oneshot::Receiver<InterruptSignal>>,
+    ) -> InterruptibleFutureResult<'rx, T, E, Fut> {
         Self {
             future,
             interrupt_rx,
@@ -35,7 +35,7 @@ where
     }
 }
 
-impl<T, E, Fut> Future for InterruptibleFutureResult<T, E, Fut>
+impl<'rx, T, E, Fut> Future for InterruptibleFutureResult<'rx, T, E, Fut>
 where
     Fut: Future<Output = Result<T, E>> + Unpin,
     E: From<InterruptSignal>,

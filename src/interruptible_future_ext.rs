@@ -8,61 +8,61 @@ use crate::{InterruptSignal, InterruptibleFutureControl, InterruptibleFutureResu
 /// Provides the `.interruptible_control()` and `.interruptible_result()`
 /// methods for `Future`s to return [`ControlFlow::Break`] or [`Result::Err`]
 /// when an interrupt signal is received.
-pub trait InterruptibleFutureExt<B, T> {
+pub trait InterruptibleFutureExt<'rx, B, T> {
     fn interruptible_control(
         self,
-        interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureControl<B, T, Self>
+        interrupt_rx: &'rx mut oneshot::Receiver<InterruptSignal>,
+    ) -> InterruptibleFutureControl<'rx, B, T, Self>
     where
         Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<InterruptSignal>;
 
     fn interruptible_result(
         self,
-        interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureResult<T, B, Self>
+        interrupt_rx: &'rx mut oneshot::Receiver<InterruptSignal>,
+    ) -> InterruptibleFutureResult<'rx, T, B, Self>
     where
         Self: Sized + Future<Output = Result<T, B>> + Unpin;
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_control_ctrl_c(self) -> InterruptibleFutureControl<B, T, Self>
+    fn interruptible_control_ctrl_c(self) -> InterruptibleFutureControl<'rx, B, T, Self>
     where
         Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<InterruptSignal>;
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<T, B, Self>
+    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<'rx, T, B, Self>
     where
         Self: Sized + Future<Output = Result<T, B>> + Unpin;
 }
 
-impl<B, T, Fut> InterruptibleFutureExt<B, T> for Fut
+impl<'rx, B, T, Fut> InterruptibleFutureExt<'rx, B, T> for Fut
 where
     Fut: Future,
 {
     fn interruptible_control(
         self,
-        interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureControl<B, T, Self>
+        interrupt_rx: &'rx mut oneshot::Receiver<InterruptSignal>,
+    ) -> InterruptibleFutureControl<'rx, B, T, Self>
     where
         Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<InterruptSignal>,
     {
-        InterruptibleFutureControl::new(self, interrupt_rx)
+        InterruptibleFutureControl::new(self, interrupt_rx.into())
     }
 
     fn interruptible_result(
         self,
-        interrupt_rx: oneshot::Receiver<InterruptSignal>,
-    ) -> InterruptibleFutureResult<T, B, Self>
+        interrupt_rx: &'rx mut oneshot::Receiver<InterruptSignal>,
+    ) -> InterruptibleFutureResult<'rx, T, B, Self>
     where
         Self: Sized + Future<Output = Result<T, B>> + Unpin,
     {
-        InterruptibleFutureResult::new(self, interrupt_rx)
+        InterruptibleFutureResult::new(self, interrupt_rx.into())
     }
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_control_ctrl_c(self) -> InterruptibleFutureControl<B, T, Self>
+    fn interruptible_control_ctrl_c(self) -> InterruptibleFutureControl<'rx, B, T, Self>
     where
         Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<InterruptSignal>,
@@ -77,11 +77,11 @@ where
             let (Ok(()) | Err(InterruptSignal)) = interrupt_tx.send(InterruptSignal);
         });
 
-        InterruptibleFutureControl::new(self, interrupt_rx)
+        InterruptibleFutureControl::new(self, interrupt_rx.into())
     }
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<T, B, Self>
+    fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<'rx, T, B, Self>
     where
         Self: Sized + Future<Output = Result<T, B>> + Unpin,
     {
@@ -95,7 +95,7 @@ where
             let (Ok(()) | Err(InterruptSignal)) = interrupt_tx.send(InterruptSignal);
         });
 
-        InterruptibleFutureResult::new(self, interrupt_rx)
+        InterruptibleFutureResult::new(self, interrupt_rx.into())
     }
 }
 
@@ -111,7 +111,7 @@ mod tests {
 
     #[tokio::test]
     async fn interrupt_overrides_control_future_return_value() {
-        let (interrupt_tx, interrupt_rx) = oneshot::channel::<InterruptSignal>();
+        let (interrupt_tx, mut interrupt_rx) = oneshot::channel::<InterruptSignal>();
         let (ready_tx, ready_rx) = oneshot::channel::<()>();
 
         let interruptible_control = async {
@@ -119,7 +119,7 @@ mod tests {
             ControlFlow::Continue(())
         }
         .boxed()
-        .interruptible_control(interrupt_rx);
+        .interruptible_control(&mut interrupt_rx);
 
         let interrupter = async move {
             interrupt_tx
@@ -137,11 +137,11 @@ mod tests {
 
     #[tokio::test]
     async fn interrupt_after_control_future_completes_does_not_override_value() {
-        let (interrupt_tx, interrupt_rx) = oneshot::channel::<InterruptSignal>();
+        let (interrupt_tx, mut interrupt_rx) = oneshot::channel::<InterruptSignal>();
 
         let interruptible_control = async { ControlFlow::<InterruptSignal, ()>::Continue(()) }
             .boxed()
-            .interruptible_control(interrupt_rx);
+            .interruptible_control(&mut interrupt_rx);
 
         let interrupter = async move {
             let (Ok(()) | Err(InterruptSignal)) = interrupt_tx.send(InterruptSignal);

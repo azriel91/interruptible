@@ -90,6 +90,8 @@ pub use crate::{
     interruptible_stream::InterruptibleStream, interruptible_stream_ext::InterruptibleStreamExt,
 };
 
+pub(crate) use owned_or_mut_ref::OwnedOrMutRef;
+
 mod interrupt_signal;
 mod interruptible_future_control;
 mod interruptible_future_ext;
@@ -98,3 +100,4 @@ mod interruptible_future_result;
 mod interruptible_stream;
 #[cfg(feature = "stream")]
 mod interruptible_stream_ext;
+mod owned_or_mut_ref;

@@ -10,25 +10,28 @@ use futures::{
 };
 use tokio::sync::oneshot::{self, error::TryRecvError};
 
-use crate::InterruptSignal;
+use crate::{InterruptSignal, OwnedOrMutRef};
 
 #[derive(Debug)]
-pub struct InterruptibleFutureControl<B, T, Fut> {
+pub struct InterruptibleFutureControl<'rx, B, T, Fut> {
     /// Underlying future that returns a value and `ControlFlow`.
     future: Fut,
     /// Receiver for interrupt signal.
-    interrupt_rx: oneshot::Receiver<InterruptSignal>,
+    interrupt_rx: OwnedOrMutRef<'rx, oneshot::Receiver<InterruptSignal>>,
     /// Marker.
     marker: PhantomData<(B, T)>,
 }
 
-impl<B, T, Fut> InterruptibleFutureControl<B, T, Fut>
+impl<'rx, B, T, Fut> InterruptibleFutureControl<'rx, B, T, Fut>
 where
     Fut: Future<Output = ControlFlow<B, T>>,
 {
     /// Returns a new `InterruptibleFutureControl`, wrapping the provided
     /// future.
-    pub(crate) fn new(future: Fut, interrupt_rx: oneshot::Receiver<InterruptSignal>) -> Self {
+    pub(crate) fn new(
+        future: Fut,
+        interrupt_rx: OwnedOrMutRef<'rx, oneshot::Receiver<InterruptSignal>>,
+    ) -> Self {
         Self {
             future,
             interrupt_rx,
@@ -38,9 +41,9 @@ where
 }
 
 // `B` does not need to be `Unpin` as it is only used in `PhantomData`.
-impl<B, T, Fut> Unpin for InterruptibleFutureControl<B, T, Fut> where Fut: Unpin {}
+impl<'rx, B, T, Fut> Unpin for InterruptibleFutureControl<'rx, B, T, Fut> where Fut: Unpin {}
 
-impl<B, T, Fut> Future for InterruptibleFutureControl<B, T, Fut>
+impl<'rx, B, T, Fut> Future for InterruptibleFutureControl<'rx, B, T, Fut>
 where
     Fut: Future<Output = ControlFlow<B, T>> + Unpin,
     B: From<InterruptSignal>,

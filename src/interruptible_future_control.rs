@@ -46,7 +46,7 @@ impl<'rx, B, T, Fut> Unpin for InterruptibleFutureControl<'rx, B, T, Fut> where 
 impl<'rx, B, T, Fut> Future for InterruptibleFutureControl<'rx, B, T, Fut>
 where
     Fut: Future<Output = ControlFlow<B, T>> + Unpin,
-    B: From<InterruptSignal>,
+    B: From<(T, InterruptSignal)>,
 {
     type Output = Fut::Output;
 
@@ -54,8 +54,14 @@ where
         Pin::new(&mut self.future).poll(cx).map(|control_flow| {
             match self.interrupt_rx.try_recv() {
                 Ok(InterruptSignal) => {
-                    // Interrupt received, return `ControlFlow::Break`
-                    ControlFlow::Break(B::from(InterruptSignal))
+                    // Interrupt received, return `ControlFlow::Break`, plus whatever the
+                    // `control_flow` returned.
+                    match control_flow {
+                        ControlFlow::Continue(t) => {
+                            ControlFlow::Break(B::from((t, InterruptSignal)))
+                        }
+                        ControlFlow::Break(b) => ControlFlow::Break(b),
+                    }
                 }
                 Err(TryRecvError::Empty) | Err(TryRecvError::Closed) => {
                     // Interrupt not received, return the future's actual `ControlFlow`.

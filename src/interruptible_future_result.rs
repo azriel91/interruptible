@@ -38,7 +38,7 @@ where
 impl<'rx, T, E, Fut> Future for InterruptibleFutureResult<'rx, T, E, Fut>
 where
     Fut: Future<Output = Result<T, E>> + Unpin,
-    E: From<InterruptSignal>,
+    E: From<(T, InterruptSignal)>,
 {
     type Output = Fut::Output;
 
@@ -47,7 +47,11 @@ where
             match self.interrupt_rx.try_recv() {
                 Ok(InterruptSignal) => {
                     // Interrupt received, return `Result::Err`
-                    Result::Err(E::from(InterruptSignal))
+                    let e = match result {
+                        Ok(t) => E::from((t, InterruptSignal)),
+                        Err(e) => e,
+                    };
+                    Err(e)
                 }
                 Err(TryRecvError::Empty) | Err(TryRecvError::Closed) => {
                     // Interrupt not received, return the future's actual `Result`.

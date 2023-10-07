@@ -2,6 +2,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InterruptSignal;
 
-impl From<InterruptSignal> for () {
-    fn from(_: InterruptSignal) -> Self {}
+impl From<((), InterruptSignal)> for InterruptSignal {
+    fn from(_: ((), InterruptSignal)) -> Self {
+        InterruptSignal
+    }
 }

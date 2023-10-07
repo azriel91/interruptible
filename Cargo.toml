@@ -1,6 +1,6 @@
 [package]
 name = "interruptible"
-version = "0.0.1"
+version = "0.0.2"
 description = "Stops a future producer or stream from producing values when an interrupt signal is received."
 documentation = "https://docs.rs/interruptible/"
 authors = ["Azriel Hoh <azriel91@gmail.com>"]

@@ -45,7 +45,7 @@ use interruptible::{InterruptSignal, InterruptibleFutureExt};
 
 #[tokio::main]
 async fn main() {
-    let (interrupt_tx, interrupt_rx) = oneshot::channel::<InterruptSignal>();
+    let (interrupt_tx, mut interrupt_rx) = oneshot::channel::<InterruptSignal>();
     let (ready_tx, ready_rx) = oneshot::channel::<()>();
 
     let interruptible_control = async {
@@ -53,7 +53,7 @@ async fn main() {
         ControlFlow::Continue(())
     }
     .boxed()
-    .interruptible_control(interrupt_rx);
+    .interruptible_control(&mut interrupt_rx);
 
     let interrupter = async move {
         interrupt_tx

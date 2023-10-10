@@ -12,6 +12,12 @@ use crate::{InterruptSignal, InterruptibleFutureControl, InterruptibleFutureResu
 /// methods for `Future`s to return [`ControlFlow::Break`] or [`Result::Err`]
 /// when an interrupt signal is received.
 pub trait InterruptibleFutureExt<'rx, B, T> {
+    /// Overrides this `Future`'s control flow when an interrupt signal is
+    /// received.
+    ///
+    /// # Parameters
+    ///
+    /// * `interrupt_rx`: Channel receiver of the interrupt signal.
     fn interruptible_control(
         self,
         interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
@@ -20,6 +26,11 @@ pub trait InterruptibleFutureExt<'rx, B, T> {
         Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<(T, InterruptSignal)>;
 
+    /// Overrides this `Future`'s result when an interrupt signal is received.
+    ///
+    /// # Parameters
+    ///
+    /// * `interrupt_rx`: Channel receiver of the interrupt signal.
     fn interruptible_result(
         self,
         interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
@@ -27,12 +38,24 @@ pub trait InterruptibleFutureExt<'rx, B, T> {
     where
         Self: Sized + Future<Output = Result<T, B>> + Unpin;
 
+    /// Overrides this `Future`'s control flow when an interrupt signal is
+    /// received through `Ctrl C`.
+    ///
+    /// # Parameters
+    ///
+    /// * `interrupt_rx`: Channel receiver of the interrupt signal.
     #[cfg(feature = "ctrl_c")]
     fn interruptible_control_ctrl_c(self) -> InterruptibleFutureControl<'rx, B, T, Self>
     where
         Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<(T, InterruptSignal)>;
 
+    /// Overrides this `Future`'s result when an interrupt signal is received
+    /// through `Ctrl C`.
+    ///
+    /// # Parameters
+    ///
+    /// * `interrupt_rx`: Channel receiver of the interrupt signal.
     #[cfg(feature = "ctrl_c")]
     fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<'rx, T, B, Self>
     where

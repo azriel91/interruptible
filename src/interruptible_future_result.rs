@@ -4,7 +4,7 @@ use futures::{
     future::Future,
     task::{Context, Poll},
 };
-use tokio::sync::oneshot::{self, error::TryRecvError};
+use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{InterruptSignal, OwnedOrMutRef};
 
@@ -16,7 +16,7 @@ where
     /// Underlying future that returns a value and `Result`.
     future: Fut,
     /// Receiver for interrupt signal.
-    interrupt_rx: OwnedOrMutRef<'rx, oneshot::Receiver<InterruptSignal>>,
+    interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
 }
 
 impl<'rx, T, E, Fut> InterruptibleFutureResult<'rx, T, E, Fut>
@@ -26,7 +26,7 @@ where
     /// Returns a new `InterruptibleFutureResult`, wrapping the provided future.
     pub(crate) fn new(
         future: Fut,
-        interrupt_rx: OwnedOrMutRef<'rx, oneshot::Receiver<InterruptSignal>>,
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
     ) -> InterruptibleFutureResult<'rx, T, E, Fut> {
         Self {
             future,
@@ -53,7 +53,7 @@ where
                     };
                     Err(e)
                 }
-                Err(TryRecvError::Empty) | Err(TryRecvError::Closed) => {
+                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => {
                     // Interrupt not received, return the future's actual `Result`.
                     result
                 }

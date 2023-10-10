@@ -8,7 +8,7 @@ use futures::{
     future::Future,
     task::{Context, Poll},
 };
-use tokio::sync::oneshot::{self, error::TryRecvError};
+use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{InterruptSignal, OwnedOrMutRef};
 
@@ -17,7 +17,7 @@ pub struct InterruptibleFutureControl<'rx, B, T, Fut> {
     /// Underlying future that returns a value and `ControlFlow`.
     future: Fut,
     /// Receiver for interrupt signal.
-    interrupt_rx: OwnedOrMutRef<'rx, oneshot::Receiver<InterruptSignal>>,
+    interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
     /// Marker.
     marker: PhantomData<(B, T)>,
 }
@@ -30,7 +30,7 @@ where
     /// future.
     pub(crate) fn new(
         future: Fut,
-        interrupt_rx: OwnedOrMutRef<'rx, oneshot::Receiver<InterruptSignal>>,
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
     ) -> Self {
         Self {
             future,
@@ -63,7 +63,7 @@ where
                         ControlFlow::Break(b) => ControlFlow::Break(b),
                     }
                 }
-                Err(TryRecvError::Empty) | Err(TryRecvError::Closed) => {
+                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => {
                     // Interrupt not received, return the future's actual `ControlFlow`.
                     control_flow
                 }

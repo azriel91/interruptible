@@ -1,7 +1,10 @@
 use std::{marker::Unpin, ops::ControlFlow};
 
 use futures::future::Future;
-use tokio::sync::oneshot;
+use tokio::sync::mpsc;
+
+#[cfg(feature = "ctrl_c")]
+use tokio::sync::mpsc::error::SendError;
 
 use crate::{InterruptSignal, InterruptibleFutureControl, InterruptibleFutureResult};
 
@@ -11,7 +14,7 @@ use crate::{InterruptSignal, InterruptibleFutureControl, InterruptibleFutureResu
 pub trait InterruptibleFutureExt<'rx, B, T> {
     fn interruptible_control(
         self,
-        interrupt_rx: &'rx mut oneshot::Receiver<InterruptSignal>,
+        interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
     ) -> InterruptibleFutureControl<'rx, B, T, Self>
     where
         Self: Sized + Future<Output = ControlFlow<B, T>>,
@@ -19,7 +22,7 @@ pub trait InterruptibleFutureExt<'rx, B, T> {
 
     fn interruptible_result(
         self,
-        interrupt_rx: &'rx mut oneshot::Receiver<InterruptSignal>,
+        interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
     ) -> InterruptibleFutureResult<'rx, T, B, Self>
     where
         Self: Sized + Future<Output = Result<T, B>> + Unpin;
@@ -42,7 +45,7 @@ where
 {
     fn interruptible_control(
         self,
-        interrupt_rx: &'rx mut oneshot::Receiver<InterruptSignal>,
+        interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
     ) -> InterruptibleFutureControl<'rx, B, T, Self>
     where
         Self: Sized + Future<Output = ControlFlow<B, T>>,
@@ -53,7 +56,7 @@ where
 
     fn interruptible_result(
         self,
-        interrupt_rx: &'rx mut oneshot::Receiver<InterruptSignal>,
+        interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
     ) -> InterruptibleFutureResult<'rx, T, B, Self>
     where
         Self: Sized + Future<Output = Result<T, B>> + Unpin,
@@ -67,14 +70,15 @@ where
         Self: Sized + Future<Output = ControlFlow<B, T>>,
         B: From<(T, InterruptSignal)>,
     {
-        let (interrupt_tx, interrupt_rx) = oneshot::channel::<InterruptSignal>();
+        let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         tokio::task::spawn(async move {
             tokio::signal::ctrl_c()
                 .await
                 .expect("Failed to initialize signal handler for SIGINT");
 
-            let (Ok(()) | Err(InterruptSignal)) = interrupt_tx.send(InterruptSignal);
+            let (Ok(()) | Err(SendError(InterruptSignal))) =
+                interrupt_tx.send(InterruptSignal).await;
         });
 
         InterruptibleFutureControl::new(self, interrupt_rx.into())
@@ -85,14 +89,15 @@ where
     where
         Self: Sized + Future<Output = Result<T, B>> + Unpin,
     {
-        let (interrupt_tx, interrupt_rx) = oneshot::channel::<InterruptSignal>();
+        let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         tokio::task::spawn(async move {
             tokio::signal::ctrl_c()
                 .await
                 .expect("Failed to initialize signal handler for SIGINT");
 
-            let (Ok(()) | Err(InterruptSignal)) = interrupt_tx.send(InterruptSignal);
+            let (Ok(()) | Err(SendError(InterruptSignal))) =
+                interrupt_tx.send(InterruptSignal).await;
         });
 
         InterruptibleFutureResult::new(self, interrupt_rx.into())
@@ -104,14 +109,20 @@ mod tests {
     use std::ops::ControlFlow;
 
     use futures::FutureExt;
-    use tokio::{join, sync::oneshot};
+    use tokio::{
+        join,
+        sync::{
+            mpsc::{self, error::SendError},
+            oneshot,
+        },
+    };
 
     use super::InterruptibleFutureExt;
     use crate::InterruptSignal;
 
     #[tokio::test]
     async fn interrupt_overrides_control_future_return_value() {
-        let (interrupt_tx, mut interrupt_rx) = oneshot::channel::<InterruptSignal>();
+        let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
         let (ready_tx, ready_rx) = oneshot::channel::<()>();
 
         let interruptible_control = async {
@@ -124,6 +135,7 @@ mod tests {
         let interrupter = async move {
             interrupt_tx
                 .send(InterruptSignal)
+                .await
                 .expect("Expected to send `InterruptSignal`.");
             ready_tx
                 .send(())
@@ -137,14 +149,15 @@ mod tests {
 
     #[tokio::test]
     async fn interrupt_after_control_future_completes_does_not_override_value() {
-        let (interrupt_tx, mut interrupt_rx) = oneshot::channel::<InterruptSignal>();
+        let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         let interruptible_control = async { ControlFlow::<InterruptSignal, ()>::Continue(()) }
             .boxed()
             .interruptible_control(&mut interrupt_rx);
 
         let interrupter = async move {
-            let (Ok(()) | Err(InterruptSignal)) = interrupt_tx.send(InterruptSignal);
+            let (Ok(()) | Err(SendError(InterruptSignal))) =
+                interrupt_tx.send(InterruptSignal).await;
         };
 
         let (control_flow, ()) = join!(interruptible_control, interrupter);

@@ -1,4 +1,4 @@
-use std::{marker::Unpin, ops::ControlFlow};
+use std::ops::ControlFlow;
 
 use futures::future::Future;
 use tokio::sync::mpsc;
@@ -36,7 +36,7 @@ pub trait InterruptibleFutureExt<'rx, B, T> {
         interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
     ) -> InterruptibleFutureResult<'rx, T, B, Self>
     where
-        Self: Sized + Future<Output = Result<T, B>> + Unpin;
+        Self: Sized + Future<Output = Result<T, B>>;
 
     /// Overrides this `Future`'s control flow when an interrupt signal is
     /// received through `Ctrl C`.
@@ -59,7 +59,7 @@ pub trait InterruptibleFutureExt<'rx, B, T> {
     #[cfg(feature = "ctrl_c")]
     fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<'rx, T, B, Self>
     where
-        Self: Sized + Future<Output = Result<T, B>> + Unpin;
+        Self: Sized + Future<Output = Result<T, B>>;
 }
 
 impl<'rx, B, T, Fut> InterruptibleFutureExt<'rx, B, T> for Fut
@@ -82,7 +82,7 @@ where
         interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
     ) -> InterruptibleFutureResult<'rx, T, B, Self>
     where
-        Self: Sized + Future<Output = Result<T, B>> + Unpin,
+        Self: Sized + Future<Output = Result<T, B>>,
     {
         InterruptibleFutureResult::new(self, interrupt_rx.into())
     }
@@ -115,7 +115,7 @@ where
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn interruptible_result_ctrl_c(self) -> InterruptibleFutureResult<'rx, T, B, Self>
     where
-        Self: Sized + Future<Output = Result<T, B>> + Unpin,
+        Self: Sized + Future<Output = Result<T, B>>,
     {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 

@@ -39,13 +39,16 @@ interruptible = { version = "0.0.2", features = ["stream"] }
 use std::ops::ControlFlow;
 
 use futures::FutureExt;
-use tokio::{join, sync::oneshot};
+use tokio::{
+    join,
+    sync::{mpsc, oneshot},
+};
 
 use interruptible::{InterruptSignal, InterruptibleFutureExt};
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let (interrupt_tx, mut interrupt_rx) = oneshot::channel::<InterruptSignal>();
+    let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
     let (ready_tx, ready_rx) = oneshot::channel::<()>();
 
     let interruptible_control = async {
@@ -58,6 +61,7 @@ async fn main() {
     let interrupter = async move {
         interrupt_tx
             .send(InterruptSignal)
+            .await
             .expect("Expected to send `InterruptSignal`.");
         ready_tx
             .send(())

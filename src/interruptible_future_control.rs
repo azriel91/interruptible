@@ -15,7 +15,7 @@ use crate::{InterruptSignal, OwnedOrMutRef};
 
 pub struct InterruptibleFutureControl<'rx, B, T, Fut> {
     /// Underlying future that returns a value and `ControlFlow`.
-    future: Fut,
+    future: Pin<Box<Fut>>,
     /// Receiver for interrupt signal.
     interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
     /// Marker.
@@ -43,7 +43,7 @@ where
         interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
     ) -> Self {
         Self {
-            future,
+            future: Box::pin(future),
             interrupt_rx,
             marker: PhantomData,
         }
@@ -55,13 +55,14 @@ impl<'rx, B, T, Fut> Unpin for InterruptibleFutureControl<'rx, B, T, Fut> where 
 
 impl<'rx, B, T, Fut> Future for InterruptibleFutureControl<'rx, B, T, Fut>
 where
-    Fut: Future<Output = ControlFlow<B, T>> + Unpin,
+    Fut: Future<Output = ControlFlow<B, T>>,
     B: From<(T, InterruptSignal)>,
+    Self: Unpin,
 {
     type Output = Fut::Output;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.future).poll(cx).map(|control_flow| {
+        self.future.as_mut().poll(cx).map(|control_flow| {
             match self.interrupt_rx.try_recv() {
                 Ok(InterruptSignal) => {
                     // Interrupt received, return `ControlFlow::Break`, plus whatever the

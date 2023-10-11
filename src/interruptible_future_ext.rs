@@ -152,7 +152,7 @@ mod tests {
     use crate::InterruptSignal;
 
     #[tokio::test]
-    async fn interrupt_overrides_control_future_continue_value() {
+    async fn interrupt_overrides_control_future_continue_unit_value() {
         let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
         let (ready_tx, ready_rx) = oneshot::channel::<()>();
 
@@ -176,6 +176,42 @@ mod tests {
         let (control_flow, ()) = join!(interruptible_control, interrupter);
 
         assert_eq!(ControlFlow::Break(InterruptSignal), control_flow);
+    }
+
+    #[tokio::test]
+    async fn interrupt_overrides_control_future_continue_value() {
+        let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let (ready_tx, ready_rx) = oneshot::channel::<()>();
+
+        let interruptible_control = async {
+            let () = ready_rx.await.expect("Expected to be notified to start.");
+            ControlFlow::Continue(FutEnd {
+                value: 1,
+                interrupted: false,
+            })
+        }
+        .boxed()
+        .interruptible_control(&mut interrupt_rx);
+
+        let interrupter = async move {
+            interrupt_tx
+                .send(InterruptSignal)
+                .await
+                .expect("Expected to send `InterruptSignal`.");
+            ready_tx
+                .send(())
+                .expect("Expected to notify sleep to start.");
+        };
+
+        let (control_flow, ()) = join!(interruptible_control, interrupter);
+
+        assert_eq!(
+            ControlFlow::Break(FutEnd {
+                value: 1,
+                interrupted: true,
+            }),
+            control_flow
+        );
     }
 
     #[tokio::test]
@@ -260,6 +296,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn interrupt_does_not_override_result_future_err_value() {
+        let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let (ready_tx, ready_rx) = oneshot::channel::<()>();
+
+        let interruptible_result = async {
+            let () = ready_rx.await.expect("Expected to be notified to start.");
+            Err(FutEnd {
+                value: 1,
+                interrupted: false,
+            })
+        }
+        .boxed()
+        .interruptible_result(&mut interrupt_rx);
+
+        let interrupter = async move {
+            interrupt_tx
+                .send(InterruptSignal)
+                .await
+                .expect("Expected to send `InterruptSignal`.");
+            ready_tx
+                .send(())
+                .expect("Expected to notify sleep to start.");
+        };
+
+        let (result_flow, ()) = join!(interruptible_result, interrupter);
+
+        assert_eq!(
+            Err(FutEnd {
+                value: 1,
+                interrupted: false,
+            }),
+            result_flow
+        );
+    }
+
+    #[tokio::test]
     async fn interrupt_after_result_future_completes_does_not_override_value() {
         let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
@@ -287,5 +359,17 @@ mod tests {
             fut_end.interrupted = true;
             fut_end
         }
+    }
+
+    #[test]
+    fn debug() {
+        let fut_end = FutEnd {
+            value: 1,
+            interrupted: false,
+        };
+        assert_eq!(
+            "FutEnd { value: 1, interrupted: false }",
+            format!("{fut_end:?}")
+        );
     }
 }

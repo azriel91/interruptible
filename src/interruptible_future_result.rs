@@ -86,9 +86,14 @@ mod tests {
     fn debug() {
         let (_interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
-        let interruptible_result = async { Result::<_, InterruptSignal>::Ok(()) }
-            .boxed()
-            .interruptible_result(&mut interrupt_rx);
+        let interruptible_result = {
+            #[cfg_attr(coverage_nightly, coverage(off))]
+            async {
+                Result::<_, InterruptSignal>::Ok(())
+            }
+        }
+        .boxed()
+        .interruptible_result(&mut interrupt_rx);
 
         assert!(format!("{interruptible_result:?}").starts_with("InterruptibleFutureResult"));
     }

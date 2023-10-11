@@ -152,7 +152,7 @@ mod tests {
     use crate::InterruptSignal;
 
     #[tokio::test]
-    async fn interrupt_overrides_control_future_return_value() {
+    async fn interrupt_overrides_control_future_continue_value() {
         let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
         let (ready_tx, ready_rx) = oneshot::channel::<()>();
 
@@ -176,6 +176,42 @@ mod tests {
         let (control_flow, ()) = join!(interruptible_control, interrupter);
 
         assert_eq!(ControlFlow::Break(InterruptSignal), control_flow);
+    }
+
+    #[tokio::test]
+    async fn interrupt_does_not_override_control_future_break_value() {
+        let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let (ready_tx, ready_rx) = oneshot::channel::<()>();
+
+        let interruptible_control = async {
+            let () = ready_rx.await.expect("Expected to be notified to start.");
+            ControlFlow::Break(FutEnd {
+                value: 1,
+                interrupted: false,
+            })
+        }
+        .boxed()
+        .interruptible_control(&mut interrupt_rx);
+
+        let interrupter = async move {
+            interrupt_tx
+                .send(InterruptSignal)
+                .await
+                .expect("Expected to send `InterruptSignal`.");
+            ready_tx
+                .send(())
+                .expect("Expected to notify sleep to start.");
+        };
+
+        let (control_flow, ()) = join!(interruptible_control, interrupter);
+
+        assert_eq!(
+            ControlFlow::Break(FutEnd {
+                value: 1,
+                interrupted: false,
+            }),
+            control_flow
+        );
     }
 
     #[tokio::test]
@@ -239,5 +275,17 @@ mod tests {
         let (result_flow, ()) = join!(interruptible_result, interrupter);
 
         assert_eq!(Ok(()), result_flow);
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct FutEnd {
+        value: usize,
+        interrupted: bool,
+    }
+    impl From<(FutEnd, InterruptSignal)> for FutEnd {
+        fn from((mut fut_end, InterruptSignal): (FutEnd, InterruptSignal)) -> Self {
+            fut_end.interrupted = true;
+            fut_end
+        }
     }
 }

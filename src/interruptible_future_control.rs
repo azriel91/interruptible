@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     marker::{PhantomData, Unpin},
     ops::ControlFlow,
     pin::Pin,
@@ -12,7 +13,6 @@ use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{InterruptSignal, OwnedOrMutRef};
 
-#[derive(Debug)]
 pub struct InterruptibleFutureControl<'rx, B, T, Fut> {
     /// Underlying future that returns a value and `ControlFlow`.
     future: Fut,
@@ -20,6 +20,16 @@ pub struct InterruptibleFutureControl<'rx, B, T, Fut> {
     interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
     /// Marker.
     marker: PhantomData<(B, T)>,
+}
+
+impl<'rx, B, T, Fut> fmt::Debug for InterruptibleFutureControl<'rx, B, T, Fut> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InterruptibleFutureControl")
+            .field("future", &"..")
+            .field("interrupt_rx", &self.interrupt_rx)
+            .field("marker", &self.marker)
+            .finish()
+    }
 }
 
 impl<'rx, B, T, Fut> InterruptibleFutureControl<'rx, B, T, Fut>
@@ -69,5 +79,31 @@ where
                 }
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ops::ControlFlow;
+
+    use futures::FutureExt;
+    use tokio::sync::mpsc::{self};
+
+    use crate::{interruptible_future_ext::InterruptibleFutureExt, InterruptSignal};
+
+    #[test]
+    fn debug() {
+        let (_interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+
+        let interruptible_control = {
+            #[cfg_attr(coverage_nightly, coverage(off))]
+            async {
+                ControlFlow::<InterruptSignal>::Continue(())
+            }
+        }
+        .boxed()
+        .interruptible_control(&mut interrupt_rx);
+
+        assert!(format!("{interruptible_control:?}").starts_with("InterruptibleFutureControl"));
     }
 }

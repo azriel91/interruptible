@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 //! Stops a future producer or stream from producing values when an interrupt
 //! signal is received.
 //!

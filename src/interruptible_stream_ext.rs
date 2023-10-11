@@ -43,19 +43,23 @@ where
     }
 
     #[cfg(feature = "ctrl_c")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, Self>
     where
         Self: Sized,
     {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
-        tokio::task::spawn(async move {
-            tokio::signal::ctrl_c()
-                .await
-                .expect("Failed to initialize signal handler for `SIGINT`.");
+        tokio::task::spawn(
+            #[cfg_attr(coverage_nightly, coverage(off))]
+            async move {
+                tokio::signal::ctrl_c()
+                    .await
+                    .expect("Failed to initialize signal handler for `SIGINT`.");
 
-            let (Ok(()) | Err(SendError(InterruptSignal))) =
-                interrupt_tx.send(InterruptSignal).await;
-        });
+                let (Ok(()) | Err(SendError(InterruptSignal))) =
+                    interrupt_tx.send(InterruptSignal).await;
+            },
+        );
 
         InterruptibleStream::new(self, interrupt_rx.into())
     }

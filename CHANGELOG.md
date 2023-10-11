@@ -1,5 +1,10 @@
 # Changelog
 
+## unreleased
+
+* Change `InterruptibleStreamExt` to return `ControlFlow::<(InterruptSignal, S::Item), S::Item>`.
+
+
 ## 0.0.2 (2023-10-07)
 
 * Update `InterruptibleFutureExt` types to return last value alongside `InterruptSignal`.

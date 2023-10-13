@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 #[cfg(feature = "ctrl_c")]
 use tokio::sync::mpsc::error::SendError;
 
-use crate::{InterruptSignal, InterruptibleStream};
+use crate::{InterruptSignal, InterruptStrategy, InterruptibleStream};
 
 /// Provides the `.interruptible()` method for `Stream`s to stop producing
 /// values when an interrupt signal is received.
@@ -18,6 +18,22 @@ pub trait InterruptibleStreamExt {
     fn interruptible(
         self,
         interrupt_rx: &mut mpsc::Receiver<InterruptSignal>,
+    ) -> InterruptibleStream<'_, Self>
+    where
+        Self: Sized;
+
+    /// Overrides this `Stream`'s poll value when an interrupt signal is
+    /// received.
+    ///
+    /// # Parameters
+    ///
+    /// * `interrupt_rx`: Channel receiver of the interrupt signal.
+    /// * `interrupt_strategy`: How to poll the underlying stream when an
+    ///   interruption is received.
+    fn interruptible_with(
+        self,
+        interrupt_rx: &mut mpsc::Receiver<InterruptSignal>,
+        interrupt_strategy: InterruptStrategy,
     ) -> InterruptibleStream<'_, Self>
     where
         Self: Sized;
@@ -40,6 +56,20 @@ where
         Self: Sized,
     {
         InterruptibleStream::new(self, interrupt_rx.into())
+    }
+
+    fn interruptible_with(
+        self,
+        interrupt_rx: &mut mpsc::Receiver<InterruptSignal>,
+        interrupt_strategy: InterruptStrategy,
+    ) -> InterruptibleStream<'_, Self>
+    where
+        Self: Sized,
+    {
+        match interrupt_strategy {
+            InterruptStrategy::FinishCurrent => InterruptibleStream::new(self, interrupt_rx.into()),
+            InterruptStrategy::PollNextN(_) => todo!(),
+        }
     }
 
     #[cfg(feature = "ctrl_c")]

@@ -8,6 +8,7 @@ use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{InterruptSignal, OwnedOrMutRef};
 
+/// Wrapper around a `Stream` that adds interruptible behaviour.
 pub struct InterruptibleStream<'rx, S> {
     /// Underlying stream that produces values.
     stream: Pin<Box<S>>,

@@ -1,4 +1,4 @@
-use std::{fmt, marker::PhantomData, ops::ControlFlow, pin::Pin};
+use std::{fmt, ops::ControlFlow, pin::Pin};
 
 use futures::{
     stream::Stream,
@@ -6,7 +6,9 @@ use futures::{
 };
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{interrupt_strategy::FinishCurrent, InterruptSignal, InterruptStrategy, OwnedOrMutRef};
+use crate::{
+    interrupt_strategy::FinishCurrent, InterruptSignal, InterruptStrategyT, OwnedOrMutRef,
+};
 
 /// Wrapper around a `Stream` that adds interruptible behaviour.
 pub struct InterruptibleStream<'rx, S, IS> {
@@ -14,19 +16,19 @@ pub struct InterruptibleStream<'rx, S, IS> {
     stream: Pin<Box<S>>,
     /// Receiver for interrupt signal.
     interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
-    /// Marker.
-    marker: PhantomData<IS>,
+    /// How to poll the underlying stream when an interruption is received.
+    strategy: IS,
 }
 
 impl<'rx, S, IS> fmt::Debug for InterruptibleStream<'rx, S, IS>
 where
-    IS: InterruptStrategy,
+    IS: InterruptStrategyT,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InterruptibleStream")
             .field("stream", &"..")
             .field("interrupt_rx", &self.interrupt_rx)
-            .field("marker", &self.marker)
+            .field("strategy", &self.strategy)
             .finish()
     }
 }
@@ -34,17 +36,18 @@ where
 impl<'rx, S, IS> InterruptibleStream<'rx, S, IS>
 where
     S: Stream,
-    IS: InterruptStrategy,
+    IS: InterruptStrategyT,
 {
     /// Returns a new `InterruptibleStream`, wrapping the provided stream.
     pub(crate) fn new(
         stream: S,
         interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+        strategy: IS,
     ) -> Self {
         Self {
             stream: Box::pin(stream),
             interrupt_rx,
-            marker: PhantomData,
+            strategy,
         }
     }
 }

@@ -35,6 +35,7 @@ pub trait InterruptibleStreamExt {
     fn interruptible_with<IS>(
         self,
         interrupt_rx: &mut mpsc::Receiver<InterruptSignal>,
+        interrupt_strategy: IS,
     ) -> InterruptibleStream<'_, Self, IS>
     where
         Self: Sized,
@@ -57,18 +58,19 @@ where
     where
         Self: Sized,
     {
-        InterruptibleStream::new(self, interrupt_rx.into())
+        InterruptibleStream::new(self, interrupt_rx.into(), FinishCurrent)
     }
 
     fn interruptible_with<IS>(
         self,
         interrupt_rx: &mut mpsc::Receiver<InterruptSignal>,
+        interrupt_strategy: IS,
     ) -> InterruptibleStream<'_, Self, IS>
     where
         Self: Sized,
         IS: InterruptStrategyT,
     {
-        InterruptibleStream::new(self, interrupt_rx.into())
+        InterruptibleStream::new(self, interrupt_rx.into(), interrupt_strategy)
     }
 
     #[cfg(feature = "ctrl_c")]
@@ -90,7 +92,7 @@ where
             },
         );
 
-        InterruptibleStream::new(self, interrupt_rx.into())
+        InterruptibleStream::new(self, interrupt_rx.into(), FinishCurrent)
     }
 }
 

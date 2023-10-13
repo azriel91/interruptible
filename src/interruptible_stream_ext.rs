@@ -4,7 +4,9 @@ use tokio::sync::mpsc;
 #[cfg(feature = "ctrl_c")]
 use tokio::sync::mpsc::error::SendError;
 
-use crate::{InterruptSignal, InterruptStrategy, InterruptibleStream};
+use crate::{
+    interrupt_strategy::FinishCurrent, InterruptSignal, InterruptStrategyT, InterruptibleStream,
+};
 
 /// Provides the `.interruptible()` method for `Stream`s to stop producing
 /// values when an interrupt signal is received.
@@ -18,7 +20,7 @@ pub trait InterruptibleStreamExt {
     fn interruptible(
         self,
         interrupt_rx: &mut mpsc::Receiver<InterruptSignal>,
-    ) -> InterruptibleStream<'_, Self>
+    ) -> InterruptibleStream<'_, Self, FinishCurrent>
     where
         Self: Sized;
 
@@ -30,16 +32,16 @@ pub trait InterruptibleStreamExt {
     /// * `interrupt_rx`: Channel receiver of the interrupt signal.
     /// * `interrupt_strategy`: How to poll the underlying stream when an
     ///   interruption is received.
-    fn interruptible_with(
+    fn interruptible_with<IS>(
         self,
         interrupt_rx: &mut mpsc::Receiver<InterruptSignal>,
-        interrupt_strategy: InterruptStrategy,
-    ) -> InterruptibleStream<'_, Self>
+    ) -> InterruptibleStream<'_, Self, IS>
     where
-        Self: Sized;
+        Self: Sized,
+        IS: InterruptStrategyT;
 
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, Self>
+    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, Self, FinishCurrent>
     where
         Self: Sized;
 }
@@ -51,27 +53,27 @@ where
     fn interruptible(
         self,
         interrupt_rx: &mut mpsc::Receiver<InterruptSignal>,
-    ) -> InterruptibleStream<Self>
+    ) -> InterruptibleStream<'_, Self, FinishCurrent>
     where
         Self: Sized,
     {
-        InterruptibleStream::new(self, interrupt_rx.into(), InterruptStrategy::FinishCurrent)
+        InterruptibleStream::new(self, interrupt_rx.into())
     }
 
-    fn interruptible_with(
+    fn interruptible_with<IS>(
         self,
         interrupt_rx: &mut mpsc::Receiver<InterruptSignal>,
-        interrupt_strategy: InterruptStrategy,
-    ) -> InterruptibleStream<'_, Self>
+    ) -> InterruptibleStream<'_, Self, IS>
     where
         Self: Sized,
+        IS: InterruptStrategyT,
     {
-        InterruptibleStream::new(self, interrupt_rx.into(), interrupt_strategy)
+        InterruptibleStream::new(self, interrupt_rx.into())
     }
 
     #[cfg(feature = "ctrl_c")]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, Self>
+    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, Self, FinishCurrent>
     where
         Self: Sized,
     {
@@ -88,7 +90,7 @@ where
             },
         );
 
-        InterruptibleStream::new(self, interrupt_rx.into(), InterruptStrategy::FinishCurrent)
+        InterruptibleStream::new(self, interrupt_rx.into())
     }
 }
 

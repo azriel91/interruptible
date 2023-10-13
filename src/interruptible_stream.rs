@@ -1,4 +1,4 @@
-use std::{fmt, ops::ControlFlow, pin::Pin};
+use std::{fmt, marker::PhantomData, ops::ControlFlow, pin::Pin};
 
 use futures::{
     stream::Stream,
@@ -6,47 +6,50 @@ use futures::{
 };
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{InterruptSignal, InterruptStrategy, OwnedOrMutRef};
+use crate::{interrupt_strategy::FinishCurrent, InterruptSignal, InterruptStrategy, OwnedOrMutRef};
 
 /// Wrapper around a `Stream` that adds interruptible behaviour.
-pub struct InterruptibleStream<'rx, S> {
+pub struct InterruptibleStream<'rx, S, IS> {
     /// Underlying stream that produces values.
     stream: Pin<Box<S>>,
     /// Receiver for interrupt signal.
     interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
-    /// How to poll the underlying stream when an interruption is received.
-    strategy: InterruptStrategy,
+    /// Marker.
+    marker: PhantomData<IS>,
 }
 
-impl<'rx, S> fmt::Debug for InterruptibleStream<'rx, S> {
+impl<'rx, S, IS> fmt::Debug for InterruptibleStream<'rx, S, IS>
+where
+    IS: InterruptStrategy,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InterruptibleStream")
             .field("stream", &"..")
             .field("interrupt_rx", &self.interrupt_rx)
-            .field("strategy", &self.strategy)
+            .field("marker", &self.marker)
             .finish()
     }
 }
 
-impl<'rx, S> InterruptibleStream<'rx, S>
+impl<'rx, S, IS> InterruptibleStream<'rx, S, IS>
 where
     S: Stream,
+    IS: InterruptStrategy,
 {
     /// Returns a new `InterruptibleStream`, wrapping the provided stream.
     pub(crate) fn new(
         stream: S,
         interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
-        strategy: InterruptStrategy,
-    ) -> InterruptibleStream<S> {
+    ) -> Self {
         Self {
             stream: Box::pin(stream),
             interrupt_rx,
-            strategy,
+            marker: PhantomData,
         }
     }
 }
 
-impl<'rx, S> Stream for InterruptibleStream<'rx, S>
+impl<'rx, S> Stream for InterruptibleStream<'rx, S, FinishCurrent>
 where
     S: Stream,
 {

@@ -102,12 +102,12 @@ mod owned_or_mut_ref;
 
 #[cfg(feature = "stream")]
 pub use crate::{
-    interrupt_strategy::InterruptStrategy, interruptible_stream::InterruptibleStream,
+    interrupt_strategy::InterruptStrategyT, interruptible_stream::InterruptibleStream,
     interruptible_stream_ext::InterruptibleStreamExt,
 };
 
 #[cfg(feature = "stream")]
-mod interrupt_strategy;
+pub mod interrupt_strategy;
 #[cfg(feature = "stream")]
 mod interruptible_stream;
 #[cfg(feature = "stream")]

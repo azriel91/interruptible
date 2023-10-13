@@ -55,7 +55,7 @@ where
     where
         Self: Sized,
     {
-        InterruptibleStream::new(self, interrupt_rx.into())
+        InterruptibleStream::new(self, interrupt_rx.into(), InterruptStrategy::FinishCurrent)
     }
 
     fn interruptible_with(
@@ -66,10 +66,7 @@ where
     where
         Self: Sized,
     {
-        match interrupt_strategy {
-            InterruptStrategy::FinishCurrent => InterruptibleStream::new(self, interrupt_rx.into()),
-            InterruptStrategy::PollNextN(_) => todo!(),
-        }
+        InterruptibleStream::new(self, interrupt_rx.into(), interrupt_strategy)
     }
 
     #[cfg(feature = "ctrl_c")]
@@ -91,7 +88,7 @@ where
             },
         );
 
-        InterruptibleStream::new(self, interrupt_rx.into())
+        InterruptibleStream::new(self, interrupt_rx.into(), InterruptStrategy::FinishCurrent)
     }
 }
 

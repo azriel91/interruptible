@@ -6,7 +6,7 @@ use futures::{
 };
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{InterruptSignal, OwnedOrMutRef};
+use crate::{InterruptSignal, InterruptStrategy, OwnedOrMutRef};
 
 /// Wrapper around a `Stream` that adds interruptible behaviour.
 pub struct InterruptibleStream<'rx, S> {
@@ -14,6 +14,8 @@ pub struct InterruptibleStream<'rx, S> {
     stream: Pin<Box<S>>,
     /// Receiver for interrupt signal.
     interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+    /// How to poll the underlying stream when an interruption is received.
+    strategy: InterruptStrategy,
 }
 
 impl<'rx, S> fmt::Debug for InterruptibleStream<'rx, S> {
@@ -21,6 +23,7 @@ impl<'rx, S> fmt::Debug for InterruptibleStream<'rx, S> {
         f.debug_struct("InterruptibleStream")
             .field("stream", &"..")
             .field("interrupt_rx", &self.interrupt_rx)
+            .field("strategy", &self.strategy)
             .finish()
     }
 }
@@ -33,10 +36,12 @@ where
     pub(crate) fn new(
         stream: S,
         interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+        strategy: InterruptStrategy,
     ) -> InterruptibleStream<S> {
         Self {
             stream: Box::pin(stream),
             interrupt_rx,
+            strategy,
         }
     }
 }

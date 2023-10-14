@@ -16,10 +16,21 @@ pub trait InterruptStrategyT: Clone + Copy + Debug + PartialEq + Eq {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FinishCurrent;
 
-impl InterruptStrategyT for FinishCurrent {
-    type PollState = ();
+/// Whether the stream has been interrupted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FinishCurrentState {
+    /// The stream has not been interrupted.
+    NotInterrupted,
+    /// The stream has been interrupted.
+    Interrupted,
+}
 
-    fn poll_state_new(&self) -> Self::PollState {}
+impl InterruptStrategyT for FinishCurrent {
+    type PollState = FinishCurrentState;
+
+    fn poll_state_new(&self) -> Self::PollState {
+        FinishCurrentState::NotInterrupted
+    }
 }
 
 /// On interrupt, continue polling the stream for the next `n` futures.
@@ -57,6 +68,10 @@ mod tests {
     #[test]
     fn debug() {
         assert_eq!("FinishCurrent", format!("{:?}", FinishCurrent));
+        assert_eq!(
+            "NotInterrupted",
+            format!("{:?}", FinishCurrentState::NotInterrupted)
+        );
         assert_eq!("PollNextN(3)", format!("{:?}", PollNextN(3)));
         assert_eq!(
             "Interrupted { n_remaining: 3 }",
@@ -67,6 +82,10 @@ mod tests {
     #[test]
     fn clone() {
         assert_eq!(FinishCurrent, Clone::clone(&FinishCurrent));
+        assert_eq!(
+            FinishCurrentState::NotInterrupted,
+            Clone::clone(&FinishCurrentState::NotInterrupted)
+        );
         assert_eq!(PollNextN(3), Clone::clone(&PollNextN(3)));
         assert_eq!(
             PollNextNState::Interrupted { n_remaining: 3 },

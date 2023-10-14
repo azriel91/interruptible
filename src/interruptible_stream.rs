@@ -1,6 +1,5 @@
 use std::{
     fmt::{self, Debug},
-    ops::ControlFlow,
     pin::Pin,
 };
 
@@ -11,8 +10,8 @@ use futures::{
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{
-    interrupt_strategy::{FinishCurrent, PollNextN, PollNextNState},
-    InterruptSignal, InterruptStrategyT, OwnedOrMutRef,
+    interrupt_strategy::{FinishCurrent, FinishCurrentState, PollNextN, PollNextNState},
+    InterruptSignal, InterruptStrategyT, OwnedOrMutRef, StreamOutcome,
 };
 
 /// Wrapper around a `Stream` that adds interruptible behaviour.
@@ -24,6 +23,16 @@ where
     stream: Pin<Box<S>>,
     /// Receiver for interrupt signal.
     interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+    /// If an interruption is received, has this stream returned a
+    /// `ControlFlow::Break` in `poll_next`.
+    interruption_notified: bool,
+    /// Whether the underlying stream has an item pending.
+    ///
+    /// Because `Stream`s are polled in order to poll the underlying future that
+    /// produces the item, we need to track whether the underlying stream has
+    /// been polled and returned `Poll::Pending`, so we should be intentional
+    /// whether or not to interrupt a stream that we have work in progress.
+    has_pending: bool,
     /// How to poll the underlying stream when an interruption is received.
     strategy: IS,
     /// Tracks state across poll invocations.
@@ -39,6 +48,8 @@ where
         f.debug_struct("InterruptibleStream")
             .field("stream", &"..")
             .field("interrupt_rx", &self.interrupt_rx)
+            .field("interruption_notified", &self.interruption_notified)
+            .field("has_pending", &self.has_pending)
             .field("strategy", &self.strategy)
             .field("strategy_poll_state", &self.strategy_poll_state)
             .finish()
@@ -61,6 +72,8 @@ where
         Self {
             stream: Box::pin(stream),
             interrupt_rx,
+            interruption_notified: false,
+            has_pending: false,
             strategy,
             strategy_poll_state,
         }
@@ -71,15 +84,38 @@ impl<'rx, S> Stream for InterruptibleStream<'rx, S, FinishCurrent>
 where
     S: Stream,
 {
-    type Item = ControlFlow<(InterruptSignal, S::Item), S::Item>;
+    type Item = StreamOutcome<S::Item>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.stream.as_mut().poll_next(cx).map(|item_opt| {
-            item_opt.map(|item| match self.interrupt_rx.try_recv() {
-                Ok(InterruptSignal) => ControlFlow::Break((InterruptSignal, item)),
-                Err(TryRecvError::Empty | TryRecvError::Disconnected) => {
-                    ControlFlow::Continue(item)
+        match self.interrupt_rx.try_recv() {
+            Ok(InterruptSignal) => self.strategy_poll_state = FinishCurrentState::Interrupted,
+            Err(TryRecvError::Empty | TryRecvError::Disconnected) => {}
+        }
+
+        match self.strategy_poll_state {
+            FinishCurrentState::NotInterrupted => {}
+            FinishCurrentState::Interrupted => {
+                if !self.has_pending {
+                    if self.interruption_notified {
+                        return Poll::Ready(None);
+                    } else {
+                        self.interruption_notified = true;
+                        return Poll::Ready(Some(StreamOutcome::InterruptBeforePoll));
+                    }
                 }
+            }
+        }
+
+        let poll = self.stream.as_mut().poll_next(cx);
+        self.has_pending = match poll {
+            Poll::Ready(_) => false,
+            Poll::Pending => true,
+        };
+
+        poll.map(|item_opt| {
+            item_opt.map(|item| match self.strategy_poll_state {
+                FinishCurrentState::NotInterrupted => StreamOutcome::NoInterrupt(item),
+                FinishCurrentState::Interrupted => StreamOutcome::InterruptDuringPoll(item),
             })
         })
     }
@@ -93,32 +129,45 @@ impl<'rx, S> Stream for InterruptibleStream<'rx, S, PollNextN>
 where
     S: Stream,
 {
-    type Item = ControlFlow<(InterruptSignal, S::Item), S::Item>;
+    type Item = StreamOutcome<S::Item>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.strategy_poll_state {
             PollNextNState::NotInterrupted => match self.interrupt_rx.try_recv() {
                 Ok(InterruptSignal) => {
                     self.strategy_poll_state = PollNextNState::Interrupted {
-                        n_remaining: self.strategy.0,
+                        n_remaining: self.strategy.0 + 1,
                     }
                 }
                 Err(TryRecvError::Empty | TryRecvError::Disconnected) => {}
             },
-            PollNextNState::Interrupted { n_remaining: _ } => {}
+            PollNextNState::Interrupted { n_remaining } if n_remaining > 0 => {}
+            PollNextNState::Interrupted { n_remaining: _ } => {
+                if !self.has_pending {
+                    return Poll::Ready(None);
+                }
+            }
         }
 
-        self.stream.as_mut().poll_next(cx).map(|item_opt| {
+        let poll = self.stream.as_mut().poll_next(cx);
+        self.has_pending = match poll {
+            Poll::Ready(_) => false,
+            Poll::Pending => true,
+        };
+
+        poll.map(|item_opt| {
             item_opt.map(|item| match self.strategy_poll_state {
-                PollNextNState::NotInterrupted => ControlFlow::Continue(item),
-                PollNextNState::Interrupted { n_remaining } if n_remaining > 0 => {
-                    self.strategy_poll_state = PollNextNState::Interrupted {
-                        n_remaining: n_remaining - 1,
-                    };
-                    ControlFlow::Continue(item)
-                }
-                PollNextNState::Interrupted { n_remaining: _ } => {
-                    ControlFlow::Break((InterruptSignal, item))
+                PollNextNState::NotInterrupted => StreamOutcome::NoInterrupt(item),
+                PollNextNState::Interrupted { n_remaining } => {
+                    let n_remaining = n_remaining - 1;
+                    self.strategy_poll_state = PollNextNState::Interrupted { n_remaining };
+                    if n_remaining == 0 {
+                        StreamOutcome::InterruptDuringPoll(item)
+                    } else {
+                        // We technically could indicate we are interrupted, with a decreasing
+                        // threshold.
+                        StreamOutcome::NoInterrupt(item)
+                    }
                 }
             })
         })

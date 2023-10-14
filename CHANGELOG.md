@@ -2,7 +2,8 @@
 
 ## unreleased
 
-* Change `InterruptibleStreamExt` to return `ControlFlow::<(InterruptSignal, S::Item), S::Item>`.
+* Change `InterruptibleStreamExt` to return `StreamOutcome*::<S::Item>`.
+* Productionize quality of `InterruptibleStreamExt`.
 
 
 ## 0.0.2 (2023-10-07)

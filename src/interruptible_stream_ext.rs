@@ -107,7 +107,10 @@ mod tests {
     };
 
     use super::InterruptibleStreamExt;
-    use crate::InterruptSignal;
+    use crate::{
+        interrupt_strategy::{FinishCurrent, PollNextN},
+        InterruptSignal,
+    };
 
     #[tokio::test]
     async fn interrupt_overrides_stream_return_value() {
@@ -119,11 +122,7 @@ mod tests {
                 if let Some(ready_rx) = ready_rx {
                     let () = ready_rx.await.expect("Expected to be notified to start.");
                 }
-                if n < 3 {
-                    Some((n, (n + 1, None)))
-                } else {
-                    None
-                }
+                Some((n, (n + 1, None)))
             })
             .interruptible(&mut interrupt_rx);
 
@@ -140,6 +139,76 @@ mod tests {
         assert_eq!(
             Some(ControlFlow::Break((InterruptSignal, 0u32))),
             control_flow
+        );
+    }
+
+    #[tokio::test]
+    async fn interrupt_with_finish_current_overrides_stream_return_value() {
+        let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let (ready_tx, ready_rx) = oneshot::channel::<()>();
+
+        let mut interruptible_stream =
+            stream::unfold((0u32, Some(ready_rx)), move |(n, ready_rx)| async move {
+                if let Some(ready_rx) = ready_rx {
+                    let () = ready_rx.await.expect("Expected to be notified to start.");
+                }
+                Some((n, (n + 1, None)))
+            })
+            .interruptible_with(&mut interrupt_rx, FinishCurrent);
+
+        interrupt_tx
+            .send(InterruptSignal)
+            .await
+            .expect("Expected to send `InterruptSignal`.");
+        ready_tx
+            .send(())
+            .expect("Expected to notify sleep to start.");
+
+        let control_flow = interruptible_stream.next().await;
+
+        assert_eq!(
+            Some(ControlFlow::Break((InterruptSignal, 0u32))),
+            control_flow
+        );
+    }
+
+    #[tokio::test]
+    async fn interrupt_with_poll_next_n_overrides_stream_return_value() {
+        let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let (ready_tx, ready_rx) = oneshot::channel::<()>();
+
+        let mut interruptible_stream =
+            stream::unfold((0u32, Some(ready_rx)), move |(n, ready_rx)| async move {
+                if let Some(ready_rx) = ready_rx {
+                    let () = ready_rx.await.expect("Expected to be notified to start.");
+                }
+                if n < 3 {
+                    Some((n, (n + 1, None)))
+                } else {
+                    None
+                }
+            })
+            .interruptible_with(&mut interrupt_rx, PollNextN(1));
+
+        interrupt_tx
+            .send(InterruptSignal)
+            .await
+            .expect("Expected to send `InterruptSignal`.");
+        ready_tx
+            .send(())
+            .expect("Expected to notify sleep to start.");
+
+        assert_eq!(
+            Some(ControlFlow::Continue(0u32)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(
+            Some(ControlFlow::Break((InterruptSignal, 1u32))),
+            interruptible_stream.next().await
+        );
+        assert_eq!(
+            Some(ControlFlow::Break((InterruptSignal, 2u32))),
+            interruptible_stream.next().await
         );
     }
 

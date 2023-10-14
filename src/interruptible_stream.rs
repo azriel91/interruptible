@@ -107,10 +107,7 @@ where
         }
 
         let poll = self.stream.as_mut().poll_next(cx);
-        self.has_pending = match poll {
-            Poll::Ready(_) => false,
-            Poll::Pending => true,
-        };
+        self.has_pending = poll.is_pending();
 
         poll.map(|item_opt| {
             item_opt.map(|item| match self.strategy_poll_state {
@@ -154,10 +151,7 @@ where
         }
 
         let poll = self.stream.as_mut().poll_next(cx);
-        self.has_pending = match poll {
-            Poll::Ready(_) => false,
-            Poll::Pending => true,
-        };
+        self.has_pending = poll.is_pending();
 
         poll.map(|item_opt| {
             item_opt.map(|item| match self.strategy_poll_state {

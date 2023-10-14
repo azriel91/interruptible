@@ -10,3 +10,16 @@ pub enum StreamOutcome<T> {
     /// No interrupt signal was received.
     NoInterrupt(T),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug() {
+        assert_eq!(
+            "InterruptDuringPoll(1)",
+            format!("{:?}", StreamOutcome::InterruptDuringPoll(1))
+        );
+    }
+}

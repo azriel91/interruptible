@@ -135,9 +135,13 @@ where
         match self.strategy_poll_state {
             PollNextNState::NotInterrupted => match self.interrupt_rx.try_recv() {
                 Ok(InterruptSignal) => {
-                    self.strategy_poll_state = PollNextNState::Interrupted {
-                        n_remaining: self.strategy.0 + 1,
-                    }
+                    let n_remaining = if self.has_pending {
+                        self.strategy.0 + 1
+                    } else {
+                        self.strategy.0
+                    };
+
+                    self.strategy_poll_state = PollNextNState::Interrupted { n_remaining }
                 }
                 Err(TryRecvError::Empty | TryRecvError::Disconnected) => {}
             },

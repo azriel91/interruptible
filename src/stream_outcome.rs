@@ -13,7 +13,7 @@ pub enum StreamOutcome<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::StreamOutcome;
 
     #[test]
     fn debug() {

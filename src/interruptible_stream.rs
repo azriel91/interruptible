@@ -11,7 +11,7 @@ use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{
     interrupt_strategy::{FinishCurrent, FinishCurrentState, PollNextN, PollNextNState},
-    InterruptSignal, InterruptStrategyT, OwnedOrMutRef, StreamOutcome,
+    InterruptSignal, InterruptStrategyT, OwnedOrMutRef, StreamOutcome, StreamOutcomeNRemaining,
 };
 
 /// Wrapper around a `Stream` that adds interruptible behaviour.
@@ -126,7 +126,7 @@ impl<'rx, S> Stream for InterruptibleStream<'rx, S, PollNextN>
 where
     S: Stream,
 {
-    type Item = StreamOutcome<S::Item>;
+    type Item = StreamOutcomeNRemaining<S::Item>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.strategy_poll_state {
@@ -155,16 +155,13 @@ where
 
         poll.map(|item_opt| {
             item_opt.map(|item| match self.strategy_poll_state {
-                PollNextNState::NotInterrupted => StreamOutcome::NoInterrupt(item),
+                PollNextNState::NotInterrupted => StreamOutcomeNRemaining::NoInterrupt(item),
                 PollNextNState::Interrupted { n_remaining } => {
                     let n_remaining = n_remaining - 1;
                     self.strategy_poll_state = PollNextNState::Interrupted { n_remaining };
-                    if n_remaining == 0 {
-                        StreamOutcome::InterruptDuringPoll(item)
-                    } else {
-                        // We technically could indicate we are interrupted, with a decreasing
-                        // threshold.
-                        StreamOutcome::NoInterrupt(item)
+                    StreamOutcomeNRemaining::InterruptDuringPoll {
+                        value: item,
+                        n_remaining,
                     }
                 }
             })

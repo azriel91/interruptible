@@ -5,35 +5,40 @@
 [![CI](https://github.com/azriel91/interruptible/workflows/CI/badge.svg)](https://github.com/azriel91/interruptible/actions/workflows/ci.yml)
 [![Coverage Status](https://codecov.io/gh/azriel91/interruptible/branch/main/graph/badge.svg)](https://codecov.io/gh/azriel91/interruptible)
 
-Stops a future producer or stream from producing values when an interrupt signal is received.
+Stops a future producer or stream from producing values when an interrupt
+signal is received.
 
-For a future that returns either `Result<T, ()>` or `ControlFlow<T, ()>`, calling `fut.interruptible_*(tx)` causes the returned value to be `Err(())` or `Break(T)` if an interruption signal is received *while* that future is executing.
+For a future that returns either `Result<T, ()>` or `ControlFlow<T, ()>`,
+calling `fut.interruptible_*(tx)` causes the returned value to be `Err(())`
+or `Break(T)` if an interruption signal is received *while* that future is
+executing.
 
-This means the future is progressed to completion, but the return value signals the producer to stop yielding futures.
+This means the future is progressed to completion, but the return value
+signals the producer to stop yielding futures.
 
-For a stream, when the interrupt signal is received, the current future is run to completion, but the stream is not polled for the next item.
+For a stream, when the interrupt signal is received, the current future is
+run to completion, but the stream is not polled for the next item.
 
-
-## Usage
+# Usage
 
 Add the following to `Cargo.toml`
 
 ```toml
-interruptible = "0.0.1"
+interruptible = "0.0.2"
+
+# Enables `InterruptibleStreamExt`
+interruptible = { version = "0.0.2", features = ["stream"] }
 
 # Enables:
 #
 # * `InterruptibleFutureExt::{interruptible_control_ctrl_c, interruptible_result_ctrl_c}`
 # * `InterruptibleStreamExt::interruptible_ctrl_c` if the `"stream"` feature is also enabled.
 interruptible = { version = "0.0.2", features = ["ctrl_c"] }
-
-# Enables `InterruptibleStreamExt`
-interruptible = { version = "0.0.2", features = ["stream"] }
 ```
 
-### Code
+# Examples
 
-#### `Future<Output = ControlFlow<B, C>>`
+## `Future<Output = ControlFlow<B, C>>`
 
 ```rust
 use std::ops::ControlFlow;
@@ -73,6 +78,60 @@ async fn main() {
     assert_eq!(ControlFlow::Break(InterruptSignal), control_flow);
 }
 ```
+
+## `InterruptibleStreamExt` with `features = ["stream"]`
+
+Stops a stream from producing values when an interrupt signal is received.
+
+See the [`interrupt_strategy`] module for different ways the stream
+interruption can be handled.
+
+```rust
+use futures::{stream, StreamExt};
+use tokio::sync::mpsc;
+
+use interruptible::{
+    interrupt_strategy::FinishCurrent,
+    InterruptibleStreamExt, InterruptSignal, StreamOutcome,
+};
+
+#[cfg(feature = "stream")]
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+
+    let mut interruptible_stream =
+        stream::unfold(0u32, move |n| async move { Some((n, n + 1)) })
+            .interruptible_with(&mut interrupt_rx, FinishCurrent);
+
+    interrupt_tx
+        .send(InterruptSignal)
+        .await
+        .expect("Expected to send `InterruptSignal`.");
+
+    assert_eq!(
+        Some(StreamOutcome::InterruptBeforePoll),
+        interruptible_stream.next().await
+    );
+    assert_eq!(
+        None,
+        interruptible_stream.next().await
+    );
+}
+```
+
+This wraps a stream with a combination of [`tokio::signal::ctrl_c`] and
+[`stream-cancel`], and stops a stream from producing values when `Ctrl C` is
+received.
+
+⚠️ **Important:** On Unix, `future.interruptible_*_ctrl_c()` and
+`stream.interruptible_ctrl_c()` will set `tokio` to be the handler of all
+`SIGINT` events, and once a signal handler is registered for a given
+process, it can never be unregistered.
+
+[`interrupt_strategy`]: https://docs.rs/interruptible/latest/interrupt_strategy/index.html
+[`stream-cancel`]: https://github.com/jonhoo/stream-cancel
+[`tokio::signal::ctrl_c`]: https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html
 
 
 ## License

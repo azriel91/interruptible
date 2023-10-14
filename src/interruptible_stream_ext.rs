@@ -98,7 +98,6 @@ where
 
 #[cfg(test)]
 mod tests {
-
     use futures::{stream, StreamExt};
     use tokio::sync::{
         mpsc::{self, error::SendError},

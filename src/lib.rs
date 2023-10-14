@@ -19,16 +19,16 @@
 //! Add the following to `Cargo.toml`
 //!
 //! ```toml
-//! interruptible = "0.0.1"
+//! interruptible = "0.0.2"
+//!
+//! # Enables `InterruptibleStreamExt`
+//! interruptible = { version = "0.0.2", features = ["stream"] }
 //!
 //! # Enables:
 //! #
 //! # * `InterruptibleFutureExt::{interruptible_control_ctrl_c, interruptible_result_ctrl_c}`
 //! # * `InterruptibleStreamExt::interruptible_ctrl_c` if the `"stream"` feature is also enabled.
 //! interruptible = { version = "0.0.2", features = ["ctrl_c"] }
-//!
-//! # Enables `InterruptibleStreamExt`
-//! interruptible = { version = "0.0.2", features = ["stream"] }
 //! ```
 //!
 //! # Examples
@@ -74,6 +74,48 @@
 //! }
 //! ```
 //!
+//! ## `InterruptibleStreamExt` with `features = ["stream"]`
+//!
+//! Stops a stream from producing values when an interrupt signal is received.
+//!
+//! See the [`interrupt_strategy`] module for different ways the stream
+//! interruption can be handled.
+//!
+//! ```rust
+//! # #[cfg(not(feature = "stream"))]
+//! # fn main() {}
+//! #
+//! #[cfg(feature = "stream")]
+//! #[tokio::main(flavor = "current_thread")]
+//! async fn main() {
+//! #
+//! # use futures::{stream, StreamExt};
+//! # use tokio::sync::mpsc;
+//! #
+//! # use interruptible::{
+//! #     interrupt_strategy::FinishCurrent,
+//! #     InterruptibleStreamExt, InterruptSignal, StreamOutcome,
+//! # };
+//! #
+//!     let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+//!
+//!     let mut interruptible_stream =
+//!         stream::unfold(0u32, move |n| async move { Some((n, n + 1)) })
+//!             .interruptible_with(&mut interrupt_rx, FinishCurrent);
+//!
+//!     interrupt_tx
+//!         .send(InterruptSignal)
+//!         .await
+//!         .expect("Expected to send `InterruptSignal`.");
+//!
+//!     assert_eq!(
+//!         Some(StreamOutcome::InterruptBeforePoll),
+//!         interruptible_stream.next().await
+//!     );
+//!     assert_eq!(None, interruptible_stream.next().await);
+//! }
+//! ```
+//!
 //! This wraps a stream with a combination of [`tokio::signal::ctrl_c`] and
 //! [`stream-cancel`], and stops a stream from producing values when `Ctrl C` is
 //! received.
@@ -83,6 +125,7 @@
 //! `SIGINT` events, and once a signal handler is registered for a given
 //! process, it can never be unregistered.
 //!
+//! [`interrupt_strategy`]: https://docs.rs/interruptible/latest/interrupt_strategy/index.html
 //! [`stream-cancel`]: https://github.com/jonhoo/stream-cancel
 //! [`tokio::signal::ctrl_c`]: https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html
 

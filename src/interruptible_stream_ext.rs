@@ -159,16 +159,22 @@ mod tests {
         let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
         let (ready_tx, ready_rx) = oneshot::channel::<()>();
 
-        let mut interruptible_stream =
-            stream::unfold((0u32, Some(ready_rx)), move |(n, ready_rx)| async move {
-                if let Some(ready_rx) = ready_rx {
-                    let () = ready_rx
-                        .await
-                        .expect("Expected to be notified to return value.");
+        let mut interruptible_stream = stream::unfold(
+            (0u32, Some(ready_rx)),
+            #[cfg_attr(coverage_nightly, coverage(off))]
+            move |(n, ready_rx)| {
+                #[cfg_attr(coverage_nightly, coverage(off))]
+                async move {
+                    if let Some(ready_rx) = ready_rx {
+                        let () = ready_rx
+                            .await
+                            .expect("Expected to be notified to return value.");
+                    }
+                    Some((n, (n + 1, None)))
                 }
-                Some((n, (n + 1, None)))
-            })
-            .interruptible_with(&mut interrupt_rx, FinishCurrent);
+            },
+        )
+        .interruptible_with(&mut interrupt_rx, FinishCurrent);
 
         interrupt_tx
             .send(InterruptSignal)
@@ -313,6 +319,30 @@ mod tests {
         assert_eq!(Some(StreamOutcome::NoInterrupt(0u32)), stream_outcome_first);
         assert_eq!(
             Some(StreamOutcome::InterruptDuringPoll(1u32)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(None, interruptible_stream.next().await);
+    }
+
+    #[tokio::test]
+    async fn interrupt_with_poll_next_n_returns_no_interrupt_when_not_interrupted() {
+        let (_interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+
+        let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
+            if n < 3 { Some((n, n + 1)) } else { None }
+        })
+        .interruptible_with(&mut interrupt_rx, PollNextN(1));
+
+        assert_eq!(
+            Some(StreamOutcome::NoInterrupt(0u32)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(
+            Some(StreamOutcome::NoInterrupt(1u32)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(
+            Some(StreamOutcome::NoInterrupt(2u32)),
             interruptible_stream.next().await
         );
         assert_eq!(None, interruptible_stream.next().await);

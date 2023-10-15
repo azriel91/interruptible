@@ -5,8 +5,7 @@
 [![CI](https://github.com/azriel91/interruptible/workflows/CI/badge.svg)](https://github.com/azriel91/interruptible/actions/workflows/ci.yml)
 [![Coverage Status](https://codecov.io/gh/azriel91/interruptible/branch/main/graph/badge.svg)](https://codecov.io/gh/azriel91/interruptible)
 
-Stops a future producer or stream from producing values when an interrupt
-signal is received.
+Stops a future producer or stream from producing values when interrupted.
 
 For a future that returns either `Result<T, ()>` or `ControlFlow<T, ()>`,
 calling `fut.interruptible_*(tx)` causes the returned value to be `Err(())`

@@ -1,7 +1,6 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
-//! Stops a future producer or stream from producing values when an interrupt
-//! signal is received.
+//! Stops a future producer or stream from producing values when interrupted.
 //!
 //! For a future that returns either `Result<T, ()>` or `ControlFlow<T, ()>`,
 //! calling `fut.interruptible_*(tx)` causes the returned value to be `Err(())`
@@ -145,8 +144,10 @@ mod owned_or_mut_ref;
 
 #[cfg(feature = "stream")]
 pub use crate::{
-    interrupt_strategy::InterruptStrategyT, interruptible_stream::InterruptibleStream,
-    interruptible_stream_ext::InterruptibleStreamExt, stream_outcome::StreamOutcome,
+    interrupt_strategy::{InterruptStrategy, InterruptStrategyT},
+    interruptible_stream::InterruptibleStream,
+    interruptible_stream_ext::InterruptibleStreamExt,
+    stream_outcome::StreamOutcome,
     stream_outcome_n_remaining::StreamOutcomeNRemaining,
 };
 
@@ -160,3 +161,6 @@ mod interruptible_stream_ext;
 mod stream_outcome;
 #[cfg(feature = "stream")]
 mod stream_outcome_n_remaining;
+
+#[cfg(feature = "stream_type_states")]
+pub mod interruptibility;

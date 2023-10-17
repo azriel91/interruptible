@@ -2,11 +2,11 @@ use tokio::sync::mpsc;
 
 use crate::InterruptSignal;
 
-/// Type state for non-interruptible.
+/// Type state for something non-interruptible.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NonInterruptible;
 
-/// Type state for non-interruptible.
+/// Type state for something interruptible.
 #[derive(Debug)]
 pub struct Interruptible<'rx, IS> {
     /// Channel receiver of the interrupt signal.

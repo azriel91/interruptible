@@ -1,6 +1,22 @@
 use tokio::sync::mpsc;
 
-use crate::InterruptSignal;
+use crate::{InterruptSignal, InterruptStrategy};
+
+/// Interruptibility parameters for a stream.
+///
+/// This is the dynamic / non-type-parameterized version of interruptibility.
+#[derive(Debug)]
+pub enum Interruptibility<'rx> {
+    /// Interruptions are not supported.
+    NonInterruptible,
+    /// Interruptions are supported.
+    Interruptible {
+        /// Channel receiver of the interrupt signal.
+        interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
+        /// How to poll the underlying stream when an interruption is received.
+        interrupt_strategy: InterruptStrategy,
+    },
+}
 
 /// Type state for something non-interruptible.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,7 +35,7 @@ pub struct Interruptible<'rx, IS> {
 mod tests {
     use tokio::sync::mpsc;
 
-    use super::{Interruptible, NonInterruptible};
+    use super::{Interruptibility, Interruptible, NonInterruptible};
     use crate::InterruptStrategy;
 
     #[test]
@@ -33,6 +49,10 @@ mod tests {
             interrupt_strategy,
         };
 
+        assert_eq!(
+            "NonInterruptible",
+            format!("{:?}", Interruptibility::NonInterruptible)
+        );
         assert_eq!("NonInterruptible", format!("{:?}", NonInterruptible));
         assert!(format!("{interruptible:?}").starts_with("Interruptible"));
     }

@@ -18,6 +18,22 @@ pub enum Interruptibility<'rx> {
     },
 }
 
+impl<'rx> Interruptibility<'rx> {
+    /// Reborrows this `Interruptiblity` with a shorter lifetime.
+    pub fn reborrow(&mut self) -> Interruptibility<'_> {
+        match self {
+            Interruptibility::NonInterruptible => Interruptibility::NonInterruptible,
+            Interruptibility::Interruptible {
+                interrupt_rx,
+                interrupt_strategy,
+            } => Interruptibility::Interruptible {
+                interrupt_rx,
+                interrupt_strategy: *interrupt_strategy,
+            },
+        }
+    }
+}
+
 /// Type state for something non-interruptible.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NonInterruptible;
@@ -60,5 +76,18 @@ mod tests {
     #[test]
     fn clone() {
         assert_eq!(NonInterruptible, Clone::clone(&NonInterruptible));
+    }
+
+    #[test]
+    fn reborrow() {
+        let (_interrupt_tx, mut interrupt_rx) = mpsc::channel(16);
+        let interrupt_rx = &mut interrupt_rx;
+        let interrupt_strategy = InterruptStrategy::PollNextN(3);
+        let mut interruptibility = Interruptibility::Interruptible {
+            interrupt_rx,
+            interrupt_strategy,
+        };
+
+        let _interruptibility = interruptibility.reborrow();
     }
 }

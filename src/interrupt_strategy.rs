@@ -37,6 +37,8 @@ use std::fmt::Debug;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InterruptStrategy {
+    /// On interrupt, keep going.
+    IgnoreInterruptions,
     /// On interrupt, wait for the current future's to complete and yield its
     /// output, but do not poll the underlying stream for any more futures.
     FinishCurrent,
@@ -55,6 +57,16 @@ pub trait InterruptStrategyT: Clone + Copy + Debug + PartialEq + Eq {
     /// Initializes the [`PollState`] for the `InterruptibleStream` to track
     /// state across poll invocations.
     fn poll_state_new(&self) -> Self::PollState;
+}
+
+/// On interrupt, keep going (ignore interruptions).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IgnoreInterruptions;
+
+impl InterruptStrategyT for IgnoreInterruptions {
+    type PollState = ();
+
+    fn poll_state_new(&self) -> Self::PollState {}
 }
 
 /// On interrupt, wait for the current future's to complete and yield its
@@ -117,6 +129,7 @@ mod tests {
             "FinishCurrent",
             format!("{:?}", InterruptStrategy::FinishCurrent)
         );
+        assert_eq!("IgnoreInterruptions", format!("{:?}", IgnoreInterruptions));
         assert_eq!("FinishCurrent", format!("{:?}", FinishCurrent));
         assert_eq!(
             "NotInterrupted",
@@ -135,6 +148,7 @@ mod tests {
             InterruptStrategy::FinishCurrent,
             Clone::clone(&InterruptStrategy::FinishCurrent)
         );
+        assert_eq!(IgnoreInterruptions, Clone::clone(&IgnoreInterruptions));
         assert_eq!(FinishCurrent, Clone::clone(&FinishCurrent));
         assert_eq!(
             FinishCurrentState::NotInterrupted,

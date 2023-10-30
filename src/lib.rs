@@ -147,6 +147,7 @@ pub use crate::{
     interrupt_strategy::{InterruptStrategy, InterruptStrategyT},
     interruptible_stream::InterruptibleStream,
     interruptible_stream_ext::InterruptibleStreamExt,
+    interruptible_stream_generic::InterruptibleStreamGeneric,
     stream_outcome::StreamOutcome,
     stream_outcome_n_remaining::StreamOutcomeNRemaining,
 };
@@ -157,6 +158,8 @@ pub mod interrupt_strategy;
 mod interruptible_stream;
 #[cfg(feature = "stream")]
 mod interruptible_stream_ext;
+#[cfg(feature = "stream")]
+mod interruptible_stream_generic;
 #[cfg(feature = "stream")]
 mod stream_outcome;
 #[cfg(feature = "stream")]

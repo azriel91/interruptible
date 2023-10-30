@@ -8,6 +8,16 @@ use crate::{
     interrupt_strategy::FinishCurrent, InterruptSignal, InterruptStrategyT, InterruptibleStream,
 };
 
+#[cfg(feature = "stream_type_states")]
+use std::pin::Pin;
+
+#[cfg(feature = "stream_type_states")]
+use crate::{
+    interrupt_strategy::{IgnoreInterruptions, PollNextN},
+    interruptibility::Interruptibility,
+    InterruptStrategy, StreamOutcome,
+};
+
 /// Provides the `.interruptible()` method for `Stream`s to stop producing
 /// values when an interrupt signal is received.
 pub trait InterruptibleStreamExt {
@@ -41,6 +51,19 @@ pub trait InterruptibleStreamExt {
         Self: Sized,
         IS: InterruptStrategyT;
 
+    /// Returns a stream with [`StreamOutcome`] as the item, without necessarily
+    /// making this stream interruptible.
+    ///
+    /// This is useful when the stream item should be a consistent type, whether
+    /// the stream is interruptible or not.
+    #[cfg(feature = "stream_type_states")]
+    fn with_interruptible_item<'rx>(
+        self,
+        interruptibility: Interruptibility<'rx>,
+    ) -> Pin<Box<dyn Stream<Item = StreamOutcome<Self::Item>> + 'rx>>
+    where
+        Self: Stream + Sized + Unpin + 'rx;
+
     #[cfg(feature = "ctrl_c")]
     fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, Self, FinishCurrent>
     where
@@ -58,7 +81,7 @@ where
     where
         Self: Sized,
     {
-        InterruptibleStream::new(self, interrupt_rx.into(), FinishCurrent)
+        InterruptibleStream::new(self, Some(interrupt_rx.into()), FinishCurrent)
     }
 
     fn interruptible_with<IS>(
@@ -70,7 +93,43 @@ where
         Self: Sized,
         IS: InterruptStrategyT,
     {
-        InterruptibleStream::new(self, interrupt_rx.into(), interrupt_strategy)
+        InterruptibleStream::new(self, Some(interrupt_rx.into()), interrupt_strategy)
+    }
+
+    #[cfg(feature = "stream_type_states")]
+    fn with_interruptible_item<'rx>(
+        self,
+        interruptibility: Interruptibility<'rx>,
+    ) -> Pin<Box<dyn Stream<Item = StreamOutcome<S::Item>> + 'rx>>
+    where
+        Self: Stream + Sized + Unpin + 'rx,
+    {
+        match interruptibility {
+            Interruptibility::NonInterruptible => {
+                Box::pin(InterruptibleStream::new(self, None, IgnoreInterruptions))
+            }
+            Interruptibility::Interruptible {
+                interrupt_rx,
+                interrupt_strategy,
+            } => match interrupt_strategy {
+                InterruptStrategy::IgnoreInterruptions => Box::pin(InterruptibleStream::new(
+                    self,
+                    Some(interrupt_rx.into()),
+                    IgnoreInterruptions,
+                )),
+
+                InterruptStrategy::FinishCurrent => Box::pin(InterruptibleStream::new(
+                    self,
+                    Some(interrupt_rx.into()),
+                    FinishCurrent,
+                )),
+
+                InterruptStrategy::PollNextN(n) => Box::pin(
+                    InterruptibleStream::new(self, Some(interrupt_rx.into()), PollNextN(n))
+                        .with_generic_item(),
+                ),
+            },
+        }
     }
 
     #[cfg(feature = "ctrl_c")]
@@ -92,7 +151,7 @@ where
             },
         );
 
-        InterruptibleStream::new(self, interrupt_rx.into(), FinishCurrent)
+        InterruptibleStream::new(self, Some(interrupt_rx.into()), FinishCurrent)
     }
 }
 

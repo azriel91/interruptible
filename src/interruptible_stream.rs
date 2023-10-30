@@ -13,7 +13,7 @@ use crate::{
     interrupt_strategy::{
         FinishCurrent, FinishCurrentState, IgnoreInterruptions, PollNextN, PollNextNState,
     },
-    InterruptSignal, InterruptStrategyT, InterruptibleStreamGeneric, OwnedOrMutRef, StreamOutcome,
+    InterruptSignal, InterruptStrategyT, InterruptibleStreamGeneric, OwnedOrMutRef, PollOutcome,
     StreamOutcomeNRemaining,
 };
 
@@ -94,12 +94,12 @@ impl<'rx, S> Stream for InterruptibleStream<'rx, S, IgnoreInterruptions>
 where
     S: Stream,
 {
-    type Item = StreamOutcome<S::Item>;
+    type Item = PollOutcome<S::Item>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let poll = self.stream.as_mut().poll_next(cx);
 
-        poll.map(|item_opt| item_opt.map(StreamOutcome::NoInterrupt))
+        poll.map(|item_opt| item_opt.map(PollOutcome::NoInterrupt))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -111,7 +111,7 @@ impl<'rx, S> Stream for InterruptibleStream<'rx, S, FinishCurrent>
 where
     S: Stream,
 {
-    type Item = StreamOutcome<S::Item>;
+    type Item = PollOutcome<S::Item>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if let Some(interrupt_rx) = self.interrupt_rx.as_mut() {
@@ -129,7 +129,7 @@ where
                         return Poll::Ready(None);
                     } else {
                         self.interruption_notified = true;
-                        return Poll::Ready(Some(StreamOutcome::InterruptBeforePoll));
+                        return Poll::Ready(Some(PollOutcome::InterruptBeforePoll));
                     }
                 }
             }
@@ -140,8 +140,8 @@ where
 
         poll.map(|item_opt| {
             item_opt.map(|item| match self.strategy_poll_state {
-                FinishCurrentState::NotInterrupted => StreamOutcome::NoInterrupt(item),
-                FinishCurrentState::Interrupted => StreamOutcome::InterruptDuringPoll(item),
+                FinishCurrentState::NotInterrupted => PollOutcome::NoInterrupt(item),
+                FinishCurrentState::Interrupted => PollOutcome::InterruptDuringPoll(item),
             })
         })
     }

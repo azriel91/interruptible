@@ -6,7 +6,7 @@ use std::{
 use futures::stream::Stream;
 
 use crate::{
-    interrupt_strategy::PollNextN, InterruptibleStream, StreamOutcome, StreamOutcomeNRemaining,
+    interrupt_strategy::PollNextN, InterruptibleStream, PollOutcome, StreamOutcomeNRemaining,
 };
 
 /// Wrapper for any stream to commonize the stream item to a common type.
@@ -27,17 +27,17 @@ impl<'rx, S> Stream for InterruptibleStreamGeneric<InterruptibleStream<'rx, S, P
 where
     S: Stream + Unpin,
 {
-    type Item = StreamOutcome<S::Item>;
+    type Item = PollOutcome<S::Item>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Pin::new(&mut self.stream).poll_next(cx).map(|item_opt| {
             item_opt.map(|item| match item {
-                StreamOutcomeNRemaining::InterruptBeforePoll => StreamOutcome::InterruptBeforePoll,
+                StreamOutcomeNRemaining::InterruptBeforePoll => PollOutcome::InterruptBeforePoll,
                 StreamOutcomeNRemaining::InterruptDuringPoll {
                     value,
                     n_remaining: _,
-                } => StreamOutcome::InterruptDuringPoll(value),
-                StreamOutcomeNRemaining::NoInterrupt(value) => StreamOutcome::NoInterrupt(value),
+                } => PollOutcome::InterruptDuringPoll(value),
+                StreamOutcomeNRemaining::NoInterrupt(value) => PollOutcome::NoInterrupt(value),
             })
         })
     }

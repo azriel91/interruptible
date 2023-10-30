@@ -15,7 +15,7 @@ use std::pin::Pin;
 use crate::{
     interrupt_strategy::{IgnoreInterruptions, PollNextN},
     interruptibility::Interruptibility,
-    InterruptStrategy, StreamOutcome,
+    InterruptStrategy, PollOutcome,
 };
 
 /// Provides the `.interruptible()` method for `Stream`s to stop producing
@@ -60,7 +60,7 @@ pub trait InterruptibleStreamExt {
     fn with_interruptible_item<'rx>(
         self,
         interruptibility: Interruptibility<'rx>,
-    ) -> Pin<Box<dyn Stream<Item = StreamOutcome<Self::Item>> + 'rx>>
+    ) -> Pin<Box<dyn Stream<Item = PollOutcome<Self::Item>> + 'rx>>
     where
         Self: Stream + Sized + Unpin + 'rx;
 
@@ -100,7 +100,7 @@ where
     fn with_interruptible_item<'rx>(
         self,
         interruptibility: Interruptibility<'rx>,
-    ) -> Pin<Box<dyn Stream<Item = StreamOutcome<S::Item>> + 'rx>>
+    ) -> Pin<Box<dyn Stream<Item = PollOutcome<S::Item>> + 'rx>>
     where
         Self: Stream + Sized + Unpin + 'rx,
     {
@@ -166,7 +166,7 @@ mod tests {
     use super::InterruptibleStreamExt;
     use crate::{
         interrupt_strategy::{FinishCurrent, PollNextN},
-        InterruptSignal, StreamOutcome, StreamOutcomeNRemaining,
+        InterruptSignal, PollOutcome, StreamOutcomeNRemaining,
     };
 
     #[tokio::test]
@@ -206,10 +206,7 @@ mod tests {
 
         let (stream_outcome, ()) = tokio::join!(interruptible_stream.next(), interrupt_task);
 
-        assert_eq!(
-            Some(StreamOutcome::InterruptDuringPoll(0u32)),
-            stream_outcome
-        );
+        assert_eq!(Some(PollOutcome::InterruptDuringPoll(0u32)), stream_outcome);
     }
 
     #[tokio::test]
@@ -243,7 +240,7 @@ mod tests {
             .expect("Expected to notify future to return value.");
 
         assert_eq!(
-            Some(StreamOutcome::InterruptBeforePoll),
+            Some(PollOutcome::InterruptBeforePoll),
             interruptible_stream.next().await
         );
         assert_eq!(None, interruptible_stream.next().await);
@@ -286,10 +283,7 @@ mod tests {
 
         let (stream_outcome, ()) = tokio::join!(interruptible_stream.next(), interrupt_task);
 
-        assert_eq!(
-            Some(StreamOutcome::InterruptDuringPoll(0u32)),
-            stream_outcome
-        );
+        assert_eq!(Some(PollOutcome::InterruptDuringPoll(0u32)), stream_outcome);
     }
 
     #[tokio::test]
@@ -434,6 +428,6 @@ mod tests {
 
         let (Ok(()) | Err(SendError(InterruptSignal))) = interrupt_tx.send(InterruptSignal).await;
 
-        assert_eq!(Some(StreamOutcome::NoInterrupt(0)), stream_outcome);
+        assert_eq!(Some(PollOutcome::NoInterrupt(0)), stream_outcome);
     }
 }

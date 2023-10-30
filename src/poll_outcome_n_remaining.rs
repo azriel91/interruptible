@@ -1,7 +1,7 @@
 /// [`InterruptibleStream`] outcome that indicates whether an interruption
 /// happened.
 #[derive(Debug, PartialEq, Eq)]
-pub enum StreamOutcomeNRemaining<T> {
+pub enum PollOutcomeNRemaining<T> {
     /// An interrupt signal was received before the stream was polled.
     InterruptBeforePoll,
     /// An interrupt signal was received after the stream was polled at least
@@ -19,7 +19,7 @@ pub enum StreamOutcomeNRemaining<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::StreamOutcomeNRemaining;
+    use super::PollOutcomeNRemaining;
 
     #[test]
     fn debug() {
@@ -27,7 +27,7 @@ mod tests {
             "InterruptDuringPoll { value: 1, n_remaining: 2 }",
             format!(
                 "{:?}",
-                StreamOutcomeNRemaining::InterruptDuringPoll {
+                PollOutcomeNRemaining::InterruptDuringPoll {
                     value: 1,
                     n_remaining: 2,
                 }

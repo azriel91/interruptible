@@ -14,7 +14,7 @@ use crate::{
         FinishCurrent, FinishCurrentState, IgnoreInterruptions, PollNextN, PollNextNState,
     },
     InterruptSignal, InterruptStrategyT, InterruptibleStreamGeneric, OwnedOrMutRef, PollOutcome,
-    StreamOutcomeNRemaining,
+    PollOutcomeNRemaining,
 };
 
 /// Wrapper around a `Stream` that adds interruptible behaviour.
@@ -155,7 +155,7 @@ impl<'rx, S> Stream for InterruptibleStream<'rx, S, PollNextN>
 where
     S: Stream,
 {
-    type Item = StreamOutcomeNRemaining<S::Item>;
+    type Item = PollOutcomeNRemaining<S::Item>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.strategy_poll_state {
@@ -188,11 +188,11 @@ where
 
         poll.map(|item_opt| {
             item_opt.map(|item| match self.strategy_poll_state {
-                PollNextNState::NotInterrupted => StreamOutcomeNRemaining::NoInterrupt(item),
+                PollNextNState::NotInterrupted => PollOutcomeNRemaining::NoInterrupt(item),
                 PollNextNState::Interrupted { n_remaining } => {
                     let n_remaining = n_remaining.saturating_sub(1);
                     self.strategy_poll_state = PollNextNState::Interrupted { n_remaining };
-                    StreamOutcomeNRemaining::InterruptDuringPoll {
+                    PollOutcomeNRemaining::InterruptDuringPoll {
                         value: item,
                         n_remaining,
                     }

@@ -6,7 +6,7 @@ use std::{
 use futures::stream::Stream;
 
 use crate::{
-    interrupt_strategy::PollNextN, InterruptibleStream, PollOutcome, StreamOutcomeNRemaining,
+    interrupt_strategy::PollNextN, InterruptibleStream, PollOutcome, PollOutcomeNRemaining,
 };
 
 /// Wrapper for any stream to commonize the stream item to a common type.
@@ -32,12 +32,12 @@ where
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Pin::new(&mut self.stream).poll_next(cx).map(|item_opt| {
             item_opt.map(|item| match item {
-                StreamOutcomeNRemaining::InterruptBeforePoll => PollOutcome::InterruptBeforePoll,
-                StreamOutcomeNRemaining::InterruptDuringPoll {
+                PollOutcomeNRemaining::InterruptBeforePoll => PollOutcome::InterruptBeforePoll,
+                PollOutcomeNRemaining::InterruptDuringPoll {
                     value,
                     n_remaining: _,
                 } => PollOutcome::InterruptDuringPoll(value),
-                StreamOutcomeNRemaining::NoInterrupt(value) => PollOutcome::NoInterrupt(value),
+                PollOutcomeNRemaining::NoInterrupt(value) => PollOutcome::NoInterrupt(value),
             })
         })
     }

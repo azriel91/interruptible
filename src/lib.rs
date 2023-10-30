@@ -149,7 +149,7 @@ pub use crate::{
     interruptible_stream_ext::InterruptibleStreamExt,
     interruptible_stream_generic::InterruptibleStreamGeneric,
     poll_outcome::PollOutcome,
-    stream_outcome_n_remaining::StreamOutcomeNRemaining,
+    poll_outcome_n_remaining::PollOutcomeNRemaining,
 };
 
 #[cfg(feature = "stream")]
@@ -163,7 +163,7 @@ mod interruptible_stream_generic;
 #[cfg(feature = "stream")]
 mod poll_outcome;
 #[cfg(feature = "stream")]
-mod stream_outcome_n_remaining;
+mod poll_outcome_n_remaining;
 
 #[cfg(feature = "stream_type_states")]
 pub mod interruptibility;

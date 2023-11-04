@@ -12,6 +12,7 @@ use std::fmt::Debug;
 /// ```rust,no_run
 /// use futures::stream::Stream;
 /// use interruptible::{
+///     interrupt_strategy::{FinishCurrent, PollNextN},
 ///     InterruptSignal, InterruptStrategy, InterruptibleStream, InterruptibleStreamExt,
 /// };
 /// use tokio::sync::mpsc;
@@ -24,7 +25,10 @@ use std::fmt::Debug;
 ///     S: Stream,
 /// {
 ///     // Each of these return a different `InterruptibleStream<'rx, S, IS>`.
-///     match self {
+///     match interrupt_strategy {
+///         InterruptStrategy::IgnoreInterruptions => {
+///             // use stream as is
+///         }
 ///         InterruptStrategy::FinishCurrent => {
 ///             let _interruptible_stream = stream.interruptible_with(interrupt_rx, FinishCurrent);
 ///         }

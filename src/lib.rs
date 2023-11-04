@@ -93,7 +93,7 @@
 //! #
 //! # use interruptible::{
 //! #     interrupt_strategy::FinishCurrent,
-//! #     InterruptibleStreamExt, InterruptSignal, StreamOutcome,
+//! #     InterruptibleStreamExt, InterruptSignal, PollOutcome,
 //! # };
 //! #
 //!     let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
@@ -108,7 +108,7 @@
 //!         .expect("Expected to send `InterruptSignal`.");
 //!
 //!     assert_eq!(
-//!         Some(StreamOutcome::InterruptBeforePoll),
+//!         Some(PollOutcome::InterruptBeforePoll),
 //!         interruptible_stream.next().await
 //!     );
 //!     assert_eq!(None, interruptible_stream.next().await);

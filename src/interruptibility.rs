@@ -1,4 +1,4 @@
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{InterruptSignal, InterruptStrategy};
 
@@ -29,6 +29,32 @@ impl<'rx> Interruptibility<'rx> {
             } => Interruptibility::Interruptible {
                 interrupt_rx,
                 interrupt_strategy: *interrupt_strategy,
+            },
+        }
+    }
+
+    /// Polls if any `InterruptSignal`s have been sent since the last poll.
+    ///
+    /// This method is intended for checking for interruptions during regular
+    /// control flow that is not tied to a stream.
+    ///
+    /// # Design Note
+    ///
+    /// The current implementation does not use the interrupt strategy, and
+    /// simply checks if an `InterruptSignal` has been sent.
+    ///
+    /// A possible evolution of this crate is to store the interrupt strategy's
+    /// state with the `Interruptibility`, and use that state across different
+    /// streams / interruptibility checks.
+    pub fn interrupt_poll(&mut self) -> Option<InterruptSignal> {
+        match self {
+            Interruptibility::NonInterruptible => None,
+            Interruptibility::Interruptible {
+                interrupt_rx,
+                interrupt_strategy: _,
+            } => match interrupt_rx.try_recv() {
+                Ok(interrupt_signal) => Some(interrupt_signal),
+                Err(TryRecvError::Empty | TryRecvError::Disconnected) => None,
             },
         }
     }

@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use futures::stream::Stream;
 use tokio::sync::mpsc;
 
@@ -5,17 +7,9 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 
 use crate::{
-    interrupt_strategy::FinishCurrent, InterruptSignal, InterruptStrategyT, InterruptibleStream,
-};
-
-#[cfg(feature = "stream_type_states")]
-use std::pin::Pin;
-
-#[cfg(feature = "stream_type_states")]
-use crate::{
-    interrupt_strategy::{IgnoreInterruptions, PollNextN},
-    interruptibility::Interruptibility,
-    InterruptStrategy, PollOutcome,
+    interrupt_strategy::{FinishCurrent, IgnoreInterruptions, PollNextN},
+    InterruptSignal, InterruptStrategy, InterruptStrategyT, Interruptibility,
+    InterruptibilityState, InterruptibleStream, PollOutcome,
 };
 
 /// Provides the `.interruptible()` method for `Stream`s to stop producing
@@ -56,10 +50,9 @@ pub trait InterruptibleStreamExt {
     ///
     /// This is useful when the stream item should be a consistent type, whether
     /// the stream is interruptible or not.
-    #[cfg(feature = "stream_type_states")]
-    fn with_interruptible_item<'rx>(
+    fn interruptible_with_state<'rx>(
         self,
-        interruptibility: Interruptibility<'rx>,
+        interruptibility_state: InterruptibilityState<'rx, '_>,
     ) -> Pin<Box<dyn Stream<Item = PollOutcome<Self::Item>> + 'rx>>
     where
         Self: Stream + Sized + Unpin + 'rx;
@@ -96,37 +89,55 @@ where
         InterruptibleStream::new(self, Some(interrupt_rx.into()), interrupt_strategy)
     }
 
-    #[cfg(feature = "stream_type_states")]
-    fn with_interruptible_item<'rx>(
+    fn interruptible_with_state<'rx>(
         self,
-        interruptibility: Interruptibility<'rx>,
+        interruptibility_state: InterruptibilityState<'rx, '_>,
     ) -> Pin<Box<dyn Stream<Item = PollOutcome<S::Item>> + 'rx>>
     where
         Self: Stream + Sized + Unpin + 'rx,
     {
+        let InterruptibilityState {
+            interruptibility,
+            poll_count,
+        } = interruptibility_state;
+
+        let poll_count = *poll_count;
+
         match interruptibility {
-            Interruptibility::NonInterruptible => {
-                Box::pin(InterruptibleStream::new(self, None, IgnoreInterruptions))
-            }
+            Interruptibility::NonInterruptible => Box::pin(InterruptibleStream::new_with_state(
+                self,
+                None,
+                IgnoreInterruptions,
+                poll_count,
+            )),
             Interruptibility::Interruptible {
                 interrupt_rx,
                 interrupt_strategy,
             } => match interrupt_strategy {
-                InterruptStrategy::IgnoreInterruptions => Box::pin(InterruptibleStream::new(
-                    self,
-                    Some(interrupt_rx.into()),
-                    IgnoreInterruptions,
-                )),
+                InterruptStrategy::IgnoreInterruptions => {
+                    Box::pin(InterruptibleStream::new_with_state(
+                        self,
+                        Some(interrupt_rx.into()),
+                        IgnoreInterruptions,
+                        poll_count,
+                    ))
+                }
 
-                InterruptStrategy::FinishCurrent => Box::pin(InterruptibleStream::new(
+                InterruptStrategy::FinishCurrent => Box::pin(InterruptibleStream::new_with_state(
                     self,
                     Some(interrupt_rx.into()),
                     FinishCurrent,
+                    poll_count,
                 )),
 
                 InterruptStrategy::PollNextN(n) => Box::pin(
-                    InterruptibleStream::new(self, Some(interrupt_rx.into()), PollNextN(n))
-                        .with_generic_item(),
+                    InterruptibleStream::new_with_state(
+                        self,
+                        Some(interrupt_rx.into()),
+                        PollNextN(n),
+                        poll_count,
+                    )
+                    .with_generic_item(),
                 ),
             },
         }

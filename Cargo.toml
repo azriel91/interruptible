@@ -32,8 +32,3 @@ tokio = { version = "1", features = ["macros", "rt", "time"] }
 default = []
 stream = ["tokio/rt"]
 ctrl_c = ["tokio/rt", "tokio/signal"]
-
-# Enables the `interruptibility::{NotInterruptible, FinishCurrent, PollNextN}` types.
-#
-# These are useful as type parameters to track parameters for `InterruptibleStream` initialization.
-stream_type_states = ["stream"]

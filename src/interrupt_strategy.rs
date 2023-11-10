@@ -61,6 +61,15 @@ pub trait InterruptStrategyT: Clone + Copy + Debug + PartialEq + Eq {
     /// Initializes the [`PollState`] for the `InterruptibleStream` to track
     /// state across poll invocations.
     fn poll_state_new(&self) -> Self::PollState;
+
+    /// Initializes the [`PollState`] for the `InterruptibleStream` to track
+    /// state across poll invocations.
+    ///
+    /// # Parameters
+    ///
+    /// * `poll_count`: The number of items previously polled since an interrupt
+    ///   signal was received.
+    fn poll_state_from(&self, poll_count: u32) -> Self::PollState;
 }
 
 /// On interrupt, keep going (ignore interruptions).
@@ -71,6 +80,8 @@ impl InterruptStrategyT for IgnoreInterruptions {
     type PollState = ();
 
     fn poll_state_new(&self) -> Self::PollState {}
+
+    fn poll_state_from(&self, _poll_count: u32) -> Self::PollState {}
 }
 
 /// On interrupt, wait for the current future's to complete and yield its
@@ -92,6 +103,14 @@ impl InterruptStrategyT for FinishCurrent {
 
     fn poll_state_new(&self) -> Self::PollState {
         FinishCurrentState::NotInterrupted
+    }
+
+    fn poll_state_from(&self, poll_count: u32) -> Self::PollState {
+        if poll_count == 0 {
+            FinishCurrentState::NotInterrupted
+        } else {
+            FinishCurrentState::Interrupted
+        }
     }
 }
 
@@ -120,6 +139,16 @@ impl InterruptStrategyT for PollNextN {
 
     fn poll_state_new(&self) -> Self::PollState {
         PollNextNState::NotInterrupted
+    }
+
+    fn poll_state_from(&self, poll_count: u32) -> Self::PollState {
+        if poll_count == 0 {
+            PollNextNState::NotInterrupted
+        } else {
+            PollNextNState::Interrupted {
+                n_remaining: self.0.saturating_sub(poll_count),
+            }
+        }
     }
 }
 

@@ -81,6 +81,25 @@ where
             strategy_poll_state,
         }
     }
+
+    /// Returns a new `InterruptibleStream`, wrapping the provided stream.
+    pub(crate) fn new_with_state(
+        stream: S,
+        interrupt_rx: Option<OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>>,
+        strategy: IS,
+        poll_count: u32,
+    ) -> Self {
+        let strategy_poll_state = strategy.poll_state_from(poll_count);
+
+        Self {
+            stream: Box::pin(stream),
+            interrupt_rx,
+            interruption_notified: false,
+            has_pending: false,
+            strategy,
+            strategy_poll_state,
+        }
+    }
 }
 
 impl<'rx, S> InterruptibleStream<'rx, S, PollNextN> {

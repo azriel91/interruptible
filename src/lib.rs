@@ -145,6 +145,8 @@ mod owned_or_mut_ref;
 #[cfg(feature = "stream")]
 pub use crate::{
     interrupt_strategy::{InterruptStrategy, InterruptStrategyT},
+    interruptibility::Interruptibility,
+    interruptibility_state::InterruptibilityState,
     interruptible_stream::InterruptibleStream,
     interruptible_stream_ext::InterruptibleStreamExt,
     interruptible_stream_generic::InterruptibleStreamGeneric,
@@ -155,6 +157,10 @@ pub use crate::{
 #[cfg(feature = "stream")]
 pub mod interrupt_strategy;
 #[cfg(feature = "stream")]
+mod interruptibility;
+#[cfg(feature = "stream")]
+mod interruptibility_state;
+#[cfg(feature = "stream")]
 mod interruptible_stream;
 #[cfg(feature = "stream")]
 mod interruptible_stream_ext;
@@ -164,6 +170,3 @@ mod interruptible_stream_generic;
 mod poll_outcome;
 #[cfg(feature = "stream")]
 mod poll_outcome_n_remaining;
-
-#[cfg(feature = "stream_type_states")]
-pub mod interruptibility;

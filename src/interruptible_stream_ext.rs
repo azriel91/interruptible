@@ -18,10 +18,10 @@ pub trait InterruptibleStreamExt {
     /// # Parameters
     ///
     /// * `interrupt_rx`: Channel receiver of the interrupt signal.
-    fn interruptible<'rx>(
+    fn interruptible(
         self,
-        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
-    ) -> InterruptibleStream<'rx, 'static, Self>
+        interrupt_rx: OwnedOrMutRef<'_, mpsc::Receiver<InterruptSignal>>,
+    ) -> InterruptibleStream<'_, 'static, Self>
     where
         Self: Sized;
 
@@ -50,10 +50,10 @@ impl<S> InterruptibleStreamExt for S
 where
     S: Stream,
 {
-    fn interruptible<'rx>(
+    fn interruptible(
         self,
-        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
-    ) -> InterruptibleStream<'rx, 'static, Self>
+        interrupt_rx: OwnedOrMutRef<'_, mpsc::Receiver<InterruptSignal>>,
+    ) -> InterruptibleStream<'_, 'static, Self>
     where
         Self: Sized,
     {

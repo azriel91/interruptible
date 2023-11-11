@@ -131,10 +131,8 @@
 pub use crate::{
     interrupt_signal::InterruptSignal, interruptible_future_control::InterruptibleFutureControl,
     interruptible_future_ext::InterruptibleFutureExt,
-    interruptible_future_result::InterruptibleFutureResult,
+    interruptible_future_result::InterruptibleFutureResult, owned_or_mut_ref::OwnedOrMutRef,
 };
-
-pub(crate) use owned_or_mut_ref::OwnedOrMutRef;
 
 mod interrupt_signal;
 mod interruptible_future_control;
@@ -144,18 +142,13 @@ mod owned_or_mut_ref;
 
 #[cfg(feature = "stream")]
 pub use crate::{
-    interrupt_strategy::{InterruptStrategy, InterruptStrategyT},
-    interruptibility::Interruptibility,
-    interruptibility_state::InterruptibilityState,
-    interruptible_stream::InterruptibleStream,
-    interruptible_stream_ext::InterruptibleStreamExt,
-    interruptible_stream_generic::InterruptibleStreamGeneric,
-    poll_outcome::PollOutcome,
-    poll_outcome_n_remaining::PollOutcomeNRemaining,
+    interrupt_strategy::InterruptStrategy, interruptibility::Interruptibility,
+    interruptibility_state::InterruptibilityState, interruptible_stream::InterruptibleStream,
+    interruptible_stream_ext::InterruptibleStreamExt, poll_outcome::PollOutcome,
 };
 
 #[cfg(feature = "stream")]
-pub mod interrupt_strategy;
+mod interrupt_strategy;
 #[cfg(feature = "stream")]
 mod interruptibility;
 #[cfg(feature = "stream")]
@@ -165,8 +158,4 @@ mod interruptible_stream;
 #[cfg(feature = "stream")]
 mod interruptible_stream_ext;
 #[cfg(feature = "stream")]
-mod interruptible_stream_generic;
-#[cfg(feature = "stream")]
 mod poll_outcome;
-#[cfg(feature = "stream")]
-mod poll_outcome_n_remaining;

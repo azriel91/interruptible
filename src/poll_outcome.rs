@@ -2,11 +2,14 @@
 /// happened.
 #[derive(Debug, PartialEq, Eq)]
 pub enum PollOutcome<T> {
-    /// An interrupt signal was received before the stream was polled.
-    InterruptBeforePoll,
-    /// An interrupt signal was received after the stream was polled at least
-    /// once.
-    InterruptDuringPoll(T),
+    /// An interrupt signal was received.
+    ///
+    /// The item is `None` in the following cases:
+    ///
+    /// * The interruption happened before the stream was polled.
+    /// * The interruption happened after a `Poll::Ready`, but before a
+    ///   subsequent poll.
+    Interrupted(Option<T>),
     /// No interrupt signal was received.
     NoInterrupt(T),
 }
@@ -18,8 +21,8 @@ mod tests {
     #[test]
     fn debug() {
         assert_eq!(
-            "InterruptDuringPoll(1)",
-            format!("{:?}", PollOutcome::InterruptDuringPoll(1))
+            "Interrupted(Some(1))",
+            format!("{:?}", PollOutcome::Interrupted(Some(1)))
         );
     }
 }

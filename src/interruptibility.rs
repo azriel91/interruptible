@@ -1,6 +1,6 @@
-use tokio::sync::mpsc::{self, error::TryRecvError};
+use tokio::sync::mpsc;
 
-use crate::{InterruptSignal, InterruptStrategy};
+use crate::{owned_or_mut_ref::OwnedOrMutRef, InterruptSignal, InterruptStrategy};
 
 /// Specifies interruptibility support of the application.
 ///
@@ -12,13 +12,41 @@ pub enum Interruptibility<'rx> {
     /// Interruptions are supported.
     Interruptible {
         /// Channel receiver of the interrupt signal.
-        interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
         /// How to poll the underlying stream when an interruption is received.
         interrupt_strategy: InterruptStrategy,
     },
 }
 
 impl<'rx> Interruptibility<'rx> {
+    /// Returns a new `Interruptibility::Interruptible`.
+    pub fn new(
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+        interrupt_strategy: InterruptStrategy,
+    ) -> Self {
+        Self::Interruptible {
+            interrupt_rx,
+            interrupt_strategy,
+        }
+    }
+
+    /// Returns a new `Interruptibility::Interruptible` using the
+    /// `InterruptStrategy::FinishCurrent` strategy.
+    pub fn finish_current(
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+    ) -> Self {
+        Self::new(interrupt_rx, InterruptStrategy::FinishCurrent)
+    }
+
+    /// Returns a new `Interruptibility::Interruptible` using the
+    /// `InterruptStrategy::FinishCurrent` strategy.
+    pub fn poll_next_n(
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+        n: u64,
+    ) -> Self {
+        Self::new(interrupt_rx, InterruptStrategy::PollNextN(n))
+    }
+
     /// Reborrows this `Interruptibility` with a shorter lifetime.
     pub fn reborrow(&mut self) -> Interruptibility<'_> {
         match self {
@@ -27,34 +55,8 @@ impl<'rx> Interruptibility<'rx> {
                 interrupt_rx,
                 interrupt_strategy,
             } => Interruptibility::Interruptible {
-                interrupt_rx,
+                interrupt_rx: OwnedOrMutRef::MutRef(&mut *interrupt_rx),
                 interrupt_strategy: *interrupt_strategy,
-            },
-        }
-    }
-
-    /// Polls if any `InterruptSignal`s have been sent since the last poll.
-    ///
-    /// This method is intended for checking for interruptions during regular
-    /// control flow that is not tied to a stream.
-    ///
-    /// # Design Note
-    ///
-    /// The current implementation does not use the interrupt strategy, and
-    /// simply checks if an `InterruptSignal` has been sent.
-    ///
-    /// A possible evolution of this crate is to store the interrupt strategy's
-    /// state with the `Interruptibility`, and use that state across different
-    /// streams / interruptibility checks.
-    pub fn interrupt_poll(&mut self) -> Option<InterruptSignal> {
-        match self {
-            Interruptibility::NonInterruptible => None,
-            Interruptibility::Interruptible {
-                interrupt_rx,
-                interrupt_strategy: _,
-            } => match interrupt_rx.try_recv() {
-                Ok(interrupt_signal) => Some(interrupt_signal),
-                Err(TryRecvError::Empty | TryRecvError::Disconnected) => None,
             },
         }
     }
@@ -77,11 +79,10 @@ mod tests {
 
     #[test]
     fn reborrow() {
-        let (_interrupt_tx, mut interrupt_rx) = mpsc::channel(16);
-        let interrupt_rx = &mut interrupt_rx;
+        let (_interrupt_tx, interrupt_rx) = mpsc::channel(16);
         let interrupt_strategy = InterruptStrategy::PollNextN(3);
         let mut interruptibility = Interruptibility::Interruptible {
-            interrupt_rx,
+            interrupt_rx: interrupt_rx.into(),
             interrupt_strategy,
         };
 

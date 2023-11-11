@@ -1,5 +1,7 @@
 /// [`InterruptibleStream`] outcome that indicates whether an interruption
 /// happened.
+///
+/// [`InterruptibleStream`]: crate::InterruptibleStream
 #[derive(Debug, PartialEq, Eq)]
 pub enum PollOutcome<T> {
     /// An interrupt signal was received.

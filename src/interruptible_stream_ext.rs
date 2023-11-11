@@ -33,6 +33,8 @@ pub trait InterruptibleStreamExt {
     ///
     /// * `interrupt_rx`: Channel receiver of the interrupt signal.
     /// * `interruptibility_state`: Whether interruptibility is supported.
+    ///
+    /// [`PollOutcome`]: crate::PollOutcome
     fn interruptible_with<'rx, 'intx>(
         self,
         interruptibility_state: InterruptibilityState<'rx, 'intx>,

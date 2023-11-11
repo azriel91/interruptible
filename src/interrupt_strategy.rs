@@ -2,43 +2,6 @@
 use std::fmt::Debug;
 
 /// How to poll an underlying stream when an interruption is received.
-///
-/// # Examples
-///
-/// Instead of storing one of the [`InterruptStrategyT`] types through a type
-/// parameter, consumers of this library can hold an [`InterruptStrategy`], and
-/// at runtime use a `match` to instantiate the `InterruptibleStream`.
-///
-/// ```rust,no_run
-/// use futures::stream::Stream;
-/// use interruptible::{
-///     interrupt_strategy::{FinishCurrent, PollNextN},
-///     InterruptSignal, InterruptStrategy, InterruptibleStream, InterruptibleStreamExt,
-/// };
-/// use tokio::sync::mpsc;
-///
-/// pub fn interrupt_strategy_apply<'rx, S>(
-///     interrupt_strategy: InterruptStrategy,
-///     stream: S,
-///     interrupt_rx: &'rx mut mpsc::Receiver<InterruptSignal>,
-/// ) where
-///     S: Stream,
-/// {
-///     // Each of these return a different `InterruptibleStream<'rx, S, IS>`.
-///     match interrupt_strategy {
-///         InterruptStrategy::IgnoreInterruptions => {
-///             // use stream as is
-///         }
-///         InterruptStrategy::FinishCurrent => {
-///             let _interruptible_stream = stream.interruptible_with(interrupt_rx, FinishCurrent);
-///         }
-///         InterruptStrategy::PollNextN(n) => {
-///             let _interruptible_stream = stream.interruptible_with(interrupt_rx, PollNextN(n));
-///         }
-///     }
-/// }
-/// ```
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InterruptStrategy {
     /// On interrupt, keep going.

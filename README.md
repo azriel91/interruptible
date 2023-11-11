@@ -86,22 +86,25 @@ See the [`interrupt_strategy`] module for different ways the stream
 interruption can be handled.
 
 ```rust
-use futures::{stream, StreamExt};
-use tokio::sync::mpsc;
-
-use interruptible::{
-    interrupt_strategy::FinishCurrent,
-    InterruptibleStreamExt, InterruptSignal, StreamOutcome,
-};
+#[cfg(not(feature = "stream"))]
+fn main() {}
 
 #[cfg(feature = "stream")]
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+
+use futures::{stream, StreamExt};
+use tokio::sync::mpsc;
+
+use interruptible::{
+    InterruptibleStreamExt, InterruptSignal, Interruptibility, PollOutcome,
+};
+
     let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
     let mut interruptible_stream =
         stream::unfold(0u32, move |n| async move { Some((n, n + 1)) })
-            .interruptible_with(&mut interrupt_rx, FinishCurrent);
+            .interruptible_with(Interruptibility::finish_current(interrupt_rx.into()).into());
 
     interrupt_tx
         .send(InterruptSignal)
@@ -109,13 +112,10 @@ async fn main() {
         .expect("Expected to send `InterruptSignal`.");
 
     assert_eq!(
-        Some(StreamOutcome::InterruptBeforePoll),
+        Some(PollOutcome::Interrupted(None)),
         interruptible_stream.next().await
     );
-    assert_eq!(
-        None,
-        interruptible_stream.next().await
-    );
+    assert_eq!(None, interruptible_stream.next().await);
 }
 ```
 

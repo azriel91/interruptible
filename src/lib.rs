@@ -21,13 +21,13 @@
 //! interruptible = "0.0.2"
 //!
 //! # Enables `InterruptibleStreamExt`
-//! interruptible = { version = "0.0.2", features = ["stream"] }
+//! interruptible = { version = "0.0.3", features = ["stream"] }
 //!
 //! # Enables:
 //! #
 //! # * `InterruptibleFutureExt::{interruptible_control_ctrl_c, interruptible_result_ctrl_c}`
 //! # * `InterruptibleStreamExt::interruptible_ctrl_c` if the `"stream"` feature is also enabled.
-//! interruptible = { version = "0.0.2", features = ["ctrl_c"] }
+//! interruptible = { version = "0.0.3", features = ["ctrl_c"] }
 //! ```
 //!
 //! # Examples

@@ -18,7 +18,7 @@
 //! Add the following to `Cargo.toml`
 //!
 //! ```toml
-//! interruptible = "0.0.2"
+//! interruptible = "0.0.3"
 //!
 //! # Enables `InterruptibleStreamExt`
 //! interruptible = { version = "0.0.3", features = ["stream"] }

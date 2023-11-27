@@ -99,7 +99,7 @@
 //!
 //!     let mut interruptible_stream =
 //!         stream::unfold(0u32, move |n| async move { Some((n, n + 1)) })
-//!             .interruptible_with(Interruptibility::finish_current(interrupt_rx.into()).into());
+//!             .interruptible(interrupt_rx.into());
 //!
 //!     interrupt_tx
 //!         .send(InterruptSignal)
@@ -114,18 +114,7 @@
 //! # }
 //! ```
 //!
-//! This wraps a stream with a combination of [`tokio::signal::ctrl_c`] and
-//! [`stream-cancel`], and stops a stream from producing values when `Ctrl C` is
-//! received.
-//!
-//! ⚠️ **Important:** On Unix, `future.interruptible_*_ctrl_c()` and
-//! `stream.interruptible_ctrl_c()` will set `tokio` to be the handler of all
-//! `SIGINT` events, and once a signal handler is registered for a given
-//! process, it can never be unregistered.
-//!
 //! [`interrupt_strategy`]: https://docs.rs/interruptible/latest/interrupt_strategy/index.html
-//! [`stream-cancel`]: https://github.com/jonhoo/stream-cancel
-//! [`tokio::signal::ctrl_c`]: https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html
 
 pub use crate::{
     interrupt_signal::InterruptSignal, interruptible_future_control::InterruptibleFutureControl,

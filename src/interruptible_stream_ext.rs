@@ -34,7 +34,46 @@ pub trait InterruptibleStreamExt {
     /// * `interrupt_rx`: Channel receiver of the interrupt signal.
     /// * `interruptibility_state`: Whether interruptibility is supported.
     ///
+    /// ### Examples
+    ///
+    /// This example uses the [`PollNextN`] strategy:
+    ///
+    /// ```rust
+    /// # #[cfg(not(feature = "stream"))]
+    /// # fn main() {}
+    /// #
+    /// # #[cfg(feature = "stream")]
+    /// # #[tokio::main(flavor = "current_thread")]
+    /// # async fn main() {
+    /// #
+    /// use futures::{stream, StreamExt};
+    /// use tokio::sync::mpsc;
+    ///
+    /// use interruptible::{InterruptSignal, Interruptibility, InterruptibleStreamExt, PollOutcome};
+    ///
+    /// let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+    /// let mut interruptible_stream = stream::unfold(0u32, move |n| async move { Some((n, n + 1)) })
+    ///     .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 2).into());
+    ///
+    /// interrupt_tx
+    ///     .send(InterruptSignal)
+    ///     .await
+    ///     .expect("Expected to send `InterruptSignal`.");
+    ///
+    /// assert_eq!(
+    ///     Some(PollOutcome::NoInterrupt(0)),
+    ///     interruptible_stream.next().await
+    /// );
+    /// assert_eq!(
+    ///     Some(PollOutcome::Interrupted(None)),
+    ///     interruptible_stream.next().await
+    /// );
+    /// assert_eq!(None, interruptible_stream.next().await);
+    /// # }
+    /// ```
+    ///
     /// [`PollOutcome`]: crate::PollOutcome
+    /// [`PollNextN`]: crate::InterruptStrategy::PollNextN
     fn interruptible_with<'rx, 'intx>(
         self,
         interruptibility_state: InterruptibilityState<'rx, 'intx>,
@@ -42,6 +81,16 @@ pub trait InterruptibleStreamExt {
     where
         Self: Sized + 'rx;
 
+    /// Wraps a stream with the [`FinishCurrent`] interrupt strategy, and spawns
+    /// a [`tokio::signal::ctrl_c`] handler to listen for interruptions.
+    ///
+    /// ⚠️ **Important:** On Unix, `future.interruptible_*_ctrl_c()` and
+    /// `stream.interruptible_ctrl_c()` will set `tokio` to be the handler of
+    /// all `SIGINT` events, and once a signal handler is registered for a
+    /// given process, it can never be unregistered.
+    ///
+    /// [`FinishCurrent`]: crate::InterruptStrategy::FinishCurrent
+    /// [`tokio::signal::ctrl_c`]: https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html
     #[cfg(feature = "ctrl_c")]
     fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, 'static, Self>
     where

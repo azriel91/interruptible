@@ -1,9 +1,10 @@
 # Changelog
 
-## unreleased
+## 0.0.3 (2023-11-28)
 
-* Change `InterruptibleStreamExt` to return `StreamOutcome*::<S::Item>`.
-* Productionize quality of `InterruptibleStreamExt`.
+* Improve crate quality to be candidate for production use.
+* Rewrite`InterruptibleStreamExt` and `InterruptibleStream` to support interrupt strategies.
+* Add `InterruptibilityState` to maintain state across different streams.
 
 
 ## 0.0.2 (2023-10-07)

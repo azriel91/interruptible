@@ -1,7 +1,7 @@
 [package]
 name = "interruptible"
-version = "0.0.2"
-description = "Stops a future producer or stream from producing values when an interrupt signal is received."
+version = "0.0.3"
+description = "Stops a future producer or stream from producing values when interrupted."
 documentation = "https://docs.rs/interruptible/"
 authors = ["Azriel Hoh <azriel91@gmail.com>"]
 edition = "2021"
@@ -11,6 +11,9 @@ readme = "README.md"
 categories = ["asynchronous"]
 keywords = ["interrupt", "stream"]
 license = "MIT OR Apache-2.0"
+
+[package.metadata.docs.rs]
+features = ["stream", "stream"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

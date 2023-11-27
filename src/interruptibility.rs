@@ -1,0 +1,91 @@
+use tokio::sync::mpsc;
+
+use crate::{owned_or_mut_ref::OwnedOrMutRef, InterruptSignal, InterruptStrategy};
+
+/// Specifies interruptibility support of the application.
+///
+/// This is the dynamic / non-type-parameterized version of interruptibility.
+#[derive(Debug)]
+pub enum Interruptibility<'rx> {
+    /// Interruptions are not supported.
+    NonInterruptible,
+    /// Interruptions are supported.
+    Interruptible {
+        /// Channel receiver of the interrupt signal.
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+        /// How to poll the underlying stream when an interruption is received.
+        interrupt_strategy: InterruptStrategy,
+    },
+}
+
+impl<'rx> Interruptibility<'rx> {
+    /// Returns a new `Interruptibility::Interruptible`.
+    pub fn new(
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+        interrupt_strategy: InterruptStrategy,
+    ) -> Self {
+        Self::Interruptible {
+            interrupt_rx,
+            interrupt_strategy,
+        }
+    }
+
+    /// Returns a new `Interruptibility::Interruptible` using the
+    /// `InterruptStrategy::FinishCurrent` strategy.
+    pub fn finish_current(
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+    ) -> Self {
+        Self::new(interrupt_rx, InterruptStrategy::FinishCurrent)
+    }
+
+    /// Returns a new `Interruptibility::Interruptible` using the
+    /// `InterruptStrategy::FinishCurrent` strategy.
+    pub fn poll_next_n(
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+        n: u64,
+    ) -> Self {
+        Self::new(interrupt_rx, InterruptStrategy::PollNextN(n))
+    }
+
+    /// Reborrows this `Interruptibility` with a shorter lifetime.
+    pub fn reborrow(&mut self) -> Interruptibility<'_> {
+        match self {
+            Interruptibility::NonInterruptible => Interruptibility::NonInterruptible,
+            Interruptibility::Interruptible {
+                interrupt_rx,
+                interrupt_strategy,
+            } => Interruptibility::Interruptible {
+                interrupt_rx: OwnedOrMutRef::MutRef(&mut *interrupt_rx),
+                interrupt_strategy: *interrupt_strategy,
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::mpsc;
+
+    use super::Interruptibility;
+    use crate::InterruptStrategy;
+
+    #[test]
+    fn debug() {
+        assert_eq!(
+            "NonInterruptible",
+            format!("{:?}", Interruptibility::NonInterruptible)
+        );
+    }
+
+    #[test]
+    fn reborrow() {
+        let (_interrupt_tx, interrupt_rx) = mpsc::channel(16);
+        let interrupt_strategy = InterruptStrategy::PollNextN(3);
+        let mut interruptibility = Interruptibility::Interruptible {
+            interrupt_rx: interrupt_rx.into(),
+            interrupt_strategy,
+        };
+
+        let _interruptibility = interruptibility.reborrow();
+    }
+}

@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 /// Holds an owned `T` or a mutable reference.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum OwnedOrMutRef<'r, T> {
+pub enum OwnedOrMutRef<'r, T> {
     /// Holds an owned `T`.
     Owned(T),
     /// Holds a mutable reference to `T`.

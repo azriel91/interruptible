@@ -1,7 +1,6 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
-//! Stops a future producer or stream from producing values when an interrupt
-//! signal is received.
+//! Stops a future producer or stream from producing values when interrupted.
 //!
 //! For a future that returns either `Result<T, ()>` or `ControlFlow<T, ()>`,
 //! calling `fut.interruptible_*(tx)` causes the returned value to be `Err(())`
@@ -19,16 +18,16 @@
 //! Add the following to `Cargo.toml`
 //!
 //! ```toml
-//! interruptible = "0.0.1"
+//! interruptible = "0.0.2"
+//!
+//! # Enables `InterruptibleStreamExt`
+//! interruptible = { version = "0.0.3", features = ["stream"] }
 //!
 //! # Enables:
 //! #
 //! # * `InterruptibleFutureExt::{interruptible_control_ctrl_c, interruptible_result_ctrl_c}`
 //! # * `InterruptibleStreamExt::interruptible_ctrl_c` if the `"stream"` feature is also enabled.
-//! interruptible = { version = "0.0.2", features = ["ctrl_c"] }
-//!
-//! # Enables `InterruptibleStreamExt`
-//! interruptible = { version = "0.0.2", features = ["stream"] }
+//! interruptible = { version = "0.0.3", features = ["ctrl_c"] }
 //! ```
 //!
 //! # Examples
@@ -74,36 +73,77 @@
 //! }
 //! ```
 //!
-//! This wraps a stream with a combination of [`tokio::signal::ctrl_c`] and
-//! [`stream-cancel`], and stops a stream from producing values when `Ctrl C` is
-//! received.
+//! ## `InterruptibleStreamExt` with `features = ["stream"]`
 //!
-//! ⚠️ **Important:** On Unix, `future.interruptible_*_ctrl_c()` and
-//! `stream.interruptible_ctrl_c()` will set `tokio` to be the handler of all
-//! `SIGINT` events, and once a signal handler is registered for a given
-//! process, it can never be unregistered.
+//! Stops a stream from producing values when an interrupt signal is received.
 //!
-//! [`stream-cancel`]: https://github.com/jonhoo/stream-cancel
-//! [`tokio::signal::ctrl_c`]: https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html
+//! See the [`interrupt_strategy`] module for different ways the stream
+//! interruption can be handled.
+//!
+//! ```rust
+//! # #[cfg(not(feature = "stream"))]
+//! # fn main() {}
+//! #
+//! #[cfg(feature = "stream")]
+//! #[tokio::main(flavor = "current_thread")]
+//! async fn main() {
+//! #
+//! # use futures::{stream, StreamExt};
+//! # use tokio::sync::mpsc;
+//! #
+//! # use interruptible::{
+//! #     InterruptibleStreamExt, InterruptSignal, Interruptibility, PollOutcome,
+//! # };
+//! #
+//!     let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+//!
+//!     let mut interruptible_stream =
+//!         stream::unfold(0u32, move |n| async move { Some((n, n + 1)) })
+//!             .interruptible(interrupt_rx.into());
+//!
+//!     interrupt_tx
+//!         .send(InterruptSignal)
+//!         .await
+//!         .expect("Expected to send `InterruptSignal`.");
+//!
+//!     assert_eq!(
+//!         Some(PollOutcome::Interrupted(None)),
+//!         interruptible_stream.next().await
+//!     );
+//!     assert_eq!(None, interruptible_stream.next().await);
+//! # }
+//! ```
+//!
+//! [`interrupt_strategy`]: https://docs.rs/interruptible/latest/interrupt_strategy/index.html
 
 pub use crate::{
     interrupt_signal::InterruptSignal, interruptible_future_control::InterruptibleFutureControl,
     interruptible_future_ext::InterruptibleFutureExt,
-    interruptible_future_result::InterruptibleFutureResult,
+    interruptible_future_result::InterruptibleFutureResult, owned_or_mut_ref::OwnedOrMutRef,
 };
-#[cfg(feature = "stream")]
-pub use crate::{
-    interruptible_stream::InterruptibleStream, interruptible_stream_ext::InterruptibleStreamExt,
-};
-
-pub(crate) use owned_or_mut_ref::OwnedOrMutRef;
 
 mod interrupt_signal;
 mod interruptible_future_control;
 mod interruptible_future_ext;
 mod interruptible_future_result;
+mod owned_or_mut_ref;
+
+#[cfg(feature = "stream")]
+pub use crate::{
+    interrupt_strategy::InterruptStrategy, interruptibility::Interruptibility,
+    interruptibility_state::InterruptibilityState, interruptible_stream::InterruptibleStream,
+    interruptible_stream_ext::InterruptibleStreamExt, poll_outcome::PollOutcome,
+};
+
+#[cfg(feature = "stream")]
+mod interrupt_strategy;
+#[cfg(feature = "stream")]
+mod interruptibility;
+#[cfg(feature = "stream")]
+mod interruptibility_state;
 #[cfg(feature = "stream")]
 mod interruptible_stream;
 #[cfg(feature = "stream")]
 mod interruptible_stream_ext;
-mod owned_or_mut_ref;
+#[cfg(feature = "stream")]
+mod poll_outcome;

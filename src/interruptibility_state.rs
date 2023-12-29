@@ -60,8 +60,9 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
     ///
     /// # Parameters
     ///
-    /// * `increment_item_count`: `true` if this poll is for a new item, `false`
-    ///   if polling for interruptions while an item is being streamed.
+    /// * `increment_item_count`: Set this to `true` if this poll is for a new
+    ///   item, `false` if polling for interruptions while an item is being
+    ///   streamed.
     ///
     /// **Note:** It is important that this is called once per `Stream::Item` or
     /// `Future`, as the invocation of this method is used to track state for
@@ -100,6 +101,12 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
         }
     }
 
+    /// Returns the `InterruptSignal` if the strategy's threshold is reached.
+    ///
+    /// * For `IgnoreInterruptions`, this always returns `None`.
+    /// * For `FinishCurrent`, this always returns `Some(interrupt_signal)`.
+    /// * For `PollNextN`, this returns `Some(interrupt_signal)` if
+    ///   `poll_since_interrupt_count` equals or is greater than `n`.
     fn interrupt_signal_based_on_strategy(
         interrupt_strategy: &mut InterruptStrategy,
         interrupt_signal: InterruptSignal,
@@ -132,7 +139,10 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
         &mut self.interruptibility
     }
 
-    /// Returns the number of times an interrupt signal has been received.
+    /// Returns the number of times `item_interrupt_poll` is called since the
+    /// very first interrupt signal was received.
+    ///
+    /// If the interruption signal has not been received, this returns 0.
     pub fn poll_since_interrupt_count(&self) -> u64 {
         *self.poll_since_interrupt_count
     }

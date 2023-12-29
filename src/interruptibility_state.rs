@@ -119,7 +119,7 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
             }
             InterruptStrategy::FinishCurrent => Some(interrupt_signal),
             InterruptStrategy::PollNextN(n) => {
-                if poll_since_interrupt_count == *n {
+                if poll_since_interrupt_count >= *n {
                     Some(interrupt_signal)
                 } else {
                     None

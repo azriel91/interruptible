@@ -1,5 +1,14 @@
 # Changelog
 
+## unreleased
+
+* Add `InterruptibilityState::is_interrupted`.
+* Add `InterruptibilityState::new_non_interruptible`.
+* Add `InterruptibilityState::new_ignore_interruptions`.
+* Add `InterruptibilityState::new_finish_current`.
+* Add `InterruptibilityState::new_poll_next_n`.
+
+
 ## 0.0.3 (2023-11-28)
 
 * Improve crate quality to be candidate for production use.

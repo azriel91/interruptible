@@ -1,11 +1,10 @@
 use std::fmt::{self, Debug};
 
-use futures::future::BoxFuture;
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{InterruptSignal, InterruptStrategy, Interruptibility, OwnedOrMutRef, OwnedOrRef};
 
-type FnInterrupt<'intx> = Box<dyn Fn() -> BoxFuture<'intx, ()> + 'intx>;
+type FnInterrupt<'intx> = Box<dyn Fn() + 'intx>;
 
 /// Whether interruptibility is supported, and number of times interrupt signals
 /// have been received.
@@ -113,7 +112,7 @@ impl<'rx, 'intx, 'fn_intx> InterruptibilityState<'rx, 'intx, 'fn_intx> {
     ) -> InterruptibilityState<'rx, 'intx, 'fn_intx_local>
     where
         'intx: 'fn_intx + 'fn_intx_local,
-        F: Fn() -> BoxFuture<'intx, ()> + 'fn_intx_local,
+        F: Fn() + 'fn_intx_local,
     {
         self.fn_interrupt_activate = fn_interrupt_activate
             .map(|f| Box::new(f) as FnInterrupt<'intx>)
@@ -253,14 +252,14 @@ impl<'rx, 'intx, 'fn_intx> InterruptibilityState<'rx, 'intx, 'fn_intx> {
             InterruptStrategy::FinishCurrent => {
                 if interrupt_signal_first_received {
                     if let Some(fn_interrupt_activate) = fn_interrupt_activate.as_ref() {
-                        tokio::task::spawn((*fn_interrupt_activate)());
+                        (*fn_interrupt_activate)();
                     }
                 }
             }
             InterruptStrategy::PollNextN(n) => {
                 if poll_since_interrupt_count == *n {
                     if let Some(fn_interrupt_activate) = fn_interrupt_activate.as_ref() {
-                        tokio::task::spawn((*fn_interrupt_activate)());
+                        (*fn_interrupt_activate)();
                     }
                 }
             }
@@ -323,7 +322,6 @@ impl<'rx> From<Interruptibility<'rx>> for InterruptibilityState<'rx, 'static, 's
 
 #[cfg(test)]
 mod tests {
-    use futures::FutureExt;
     use tokio::sync::mpsc::{self, error::TryRecvError};
 
     use crate::{InterruptSignal, Interruptibility};
@@ -401,70 +399,55 @@ mod tests {
     #[tokio::test]
     async fn fn_interrupt_activate_runs_when_interrupt_activated()
     -> Result<(), Box<dyn std::error::Error>> {
-        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
-        let interrupt_activate_tx = &interrupt_activate_tx;
-
         let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
         let interrupt_rx = &mut interrupt_rx;
 
+        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
         let mut interruptibility_state =
             InterruptibilityState::new_ignore_interruptions(interrupt_rx.into())
-                .with_fn_interrupt_activate(Some(move || {
-                    async move {
-                        interrupt_activate_tx
-                            .send(100)
-                            .await
-                            .expect("Expected to send value.");
-                    }
-                    .boxed()
+                .with_fn_interrupt_activate(Some(|| {
+                    interrupt_activate_tx
+                        .try_send(100)
+                        .expect("Expected to send value.");
                 }));
         interrupt_tx.send(InterruptSignal).await?;
         interruptibility_state.item_interrupt_poll(true);
         assert!(!interruptibility_state.is_interrupted());
         assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
 
+        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
         let mut interruptibility_state =
             InterruptibilityState::new_ignore_interruptions(interrupt_rx.into())
-                .with_fn_interrupt_activate(Some(move || {
-                    async move {
-                        interrupt_activate_tx
-                            .send(101)
-                            .await
-                            .expect("Expected to send value.");
-                    }
-                    .boxed()
+                .with_fn_interrupt_activate(Some(|| {
+                    interrupt_activate_tx
+                        .try_send(101)
+                        .expect("Expected to send value.");
                 }));
         interrupt_tx.send(InterruptSignal).await?;
         interruptibility_state.item_interrupt_poll(true);
         assert!(!interruptibility_state.is_interrupted());
         assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
 
+        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
         let mut interruptibility_state =
             InterruptibilityState::new_finish_current(interrupt_rx.into())
-                .with_fn_interrupt_activate(Some(move || {
-                    async move {
-                        interrupt_activate_tx
-                            .send(102)
-                            .await
-                            .expect("Expected to send value.");
-                    }
-                    .boxed()
+                .with_fn_interrupt_activate(Some(|| {
+                    interrupt_activate_tx
+                        .try_send(102)
+                        .expect("Expected to send value.");
                 }));
         interrupt_tx.send(InterruptSignal).await?;
         interruptibility_state.item_interrupt_poll(true);
         assert!(interruptibility_state.is_interrupted());
         assert_eq!(Ok(102), interrupt_activate_rx.try_recv());
 
+        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
         let mut interruptibility_state =
             InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2)
-                .with_fn_interrupt_activate(Some(move || {
-                    async move {
-                        interrupt_activate_tx
-                            .send(103)
-                            .await
-                            .expect("Expected to send value.");
-                    }
-                    .boxed()
+                .with_fn_interrupt_activate(Some(|| {
+                    interrupt_activate_tx
+                        .try_send(103)
+                        .expect("Expected to send value.");
                 }));
         interrupt_tx.send(InterruptSignal).await?;
         interruptibility_state.item_interrupt_poll(true);
@@ -474,16 +457,13 @@ mod tests {
         assert!(interruptibility_state.is_interrupted());
         assert_eq!(Ok(103), interrupt_activate_rx.try_recv());
 
+        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
         let mut interruptibility_state =
             InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2)
-                .with_fn_interrupt_activate(Some(move || {
-                    async move {
-                        interrupt_activate_tx
-                            .send(104)
-                            .await
-                            .expect("Expected to send value.");
-                    }
-                    .boxed()
+                .with_fn_interrupt_activate(Some(|| {
+                    interrupt_activate_tx
+                        .try_send(104)
+                        .expect("Expected to send value.");
                 }));
         interrupt_tx.send(InterruptSignal).await?;
         interruptibility_state.item_interrupt_poll(true);

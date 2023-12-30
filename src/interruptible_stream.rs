@@ -8,11 +8,11 @@ use futures::{
 use crate::{InterruptSignal, InterruptibilityState, PollOutcome};
 
 /// Wrapper around a `Stream` that adds interruptible behaviour.
-pub struct InterruptibleStream<'rx, 'intx, S> {
+pub struct InterruptibleStream<'rx, 'intx, 'fn_intx, S> {
     /// Underlying stream that produces values.
     stream: Pin<Box<S>>,
     /// Receiver for interrupt signal.
-    interruptibility_state: InterruptibilityState<'rx, 'intx>,
+    interruptibility_state: InterruptibilityState<'rx, 'intx, 'fn_intx>,
     /// If an interruption is received, has this stream returned a
     /// `ControlFlow::Break` in `poll_next`.
     interrupted_and_notified: bool,
@@ -33,7 +33,7 @@ pub struct InterruptibleStream<'rx, 'intx, S> {
     item_polled_is_counted: bool,
 }
 
-impl<'rx, 'intx, S> fmt::Debug for InterruptibleStream<'rx, 'intx, S> {
+impl<'rx, 'intx, 'fn_intx, S> fmt::Debug for InterruptibleStream<'rx, 'intx, 'fn_intx, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InterruptibleStream")
             .field("stream", &"..")
@@ -46,14 +46,14 @@ impl<'rx, 'intx, S> fmt::Debug for InterruptibleStream<'rx, 'intx, S> {
     }
 }
 
-impl<'rx, 'intx, S> InterruptibleStream<'rx, 'intx, S>
+impl<'rx, 'intx, 'fn_intx, S> InterruptibleStream<'rx, 'intx, 'fn_intx, S>
 where
     S: Stream,
 {
     /// Returns a new `InterruptibleStream`, wrapping the provided stream.
     pub(crate) fn new(
         stream: S,
-        interruptibility_state: InterruptibilityState<'rx, 'intx>,
+        interruptibility_state: InterruptibilityState<'rx, 'intx, 'fn_intx>,
     ) -> Self {
         Self {
             stream: Box::pin(stream),
@@ -66,7 +66,7 @@ where
     }
 }
 
-impl<'rx, 'intx, S> Stream for InterruptibleStream<'rx, 'intx, S>
+impl<'rx, 'intx, 'fn_intx, S> Stream for InterruptibleStream<'rx, 'intx, 'fn_intx, S>
 where
     S: Stream,
 {

@@ -1,4 +1,4 @@
-use tokio::sync::mpsc::error::TryRecvError;
+use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{InterruptSignal, InterruptStrategy, Interruptibility, OwnedOrMutRef};
 
@@ -15,13 +15,53 @@ pub struct InterruptibilityState<'rx, 'intx> {
 }
 
 impl<'rx> InterruptibilityState<'rx, 'static> {
-    /// Returns a new `InterruptibilityState`.
+    /// Returns a new [`InterruptibilityState`].
     pub fn new(interruptibility: Interruptibility<'rx>) -> Self {
         Self {
             interruptibility,
             poll_since_interrupt_count: OwnedOrMutRef::Owned(0),
             interrupt_signal_received: OwnedOrMutRef::Owned(None),
         }
+    }
+
+    /// Returns a new `InterruptibilityState` with
+    /// [`Interruptibility::NonInterruptible`] support.
+    pub fn new_non_interruptible() -> Self {
+        Self::new(Interruptibility::NonInterruptible)
+    }
+
+    /// Returns a new `InterruptibilityState` with
+    /// [`InterruptStrategy::IgnoreInterruptions`].
+    pub fn new_ignore_interruptions(
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+    ) -> Self {
+        Self::new(Interruptibility::Interruptible {
+            interrupt_rx,
+            interrupt_strategy: InterruptStrategy::IgnoreInterruptions,
+        })
+    }
+
+    /// Returns a new `InterruptibilityState` with
+    /// [`InterruptStrategy::FinishCurrent`].
+    pub fn new_finish_current(
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+    ) -> Self {
+        Self::new(Interruptibility::Interruptible {
+            interrupt_rx,
+            interrupt_strategy: InterruptStrategy::FinishCurrent,
+        })
+    }
+
+    /// Returns a new `InterruptibilityState` with
+    /// [`InterruptStrategy::PollNextN`].
+    pub fn new_poll_next_n(
+        interrupt_rx: OwnedOrMutRef<'rx, mpsc::Receiver<InterruptSignal>>,
+        n: u64,
+    ) -> Self {
+        Self::new(Interruptibility::Interruptible {
+            interrupt_rx,
+            interrupt_strategy: InterruptStrategy::PollNextN(n),
+        })
     }
 }
 

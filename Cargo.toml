@@ -1,6 +1,6 @@
 [package]
 name = "interruptible"
-version = "0.0.3"
+version = "0.0.4"
 description = "Stops a future producer or stream from producing values when interrupted."
 documentation = "https://docs.rs/interruptible/"
 authors = ["Azriel Hoh <azriel91@gmail.com>"]
@@ -19,7 +19,7 @@ features = ["stream", "stream"]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-futures = "0.3.29"
+futures = "0.3.30"
 tokio = { version = "1", features = ["sync"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

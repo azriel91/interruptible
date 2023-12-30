@@ -21,7 +21,7 @@ pub trait InterruptibleStreamExt {
     fn interruptible(
         self,
         interrupt_rx: OwnedOrMutRef<'_, mpsc::Receiver<InterruptSignal>>,
-    ) -> InterruptibleStream<'_, 'static, Self>
+    ) -> InterruptibleStream<'_, 'static, 'static, Self>
     where
         Self: Sized;
 
@@ -74,10 +74,10 @@ pub trait InterruptibleStreamExt {
     ///
     /// [`PollOutcome`]: crate::PollOutcome
     /// [`PollNextN`]: crate::InterruptStrategy::PollNextN
-    fn interruptible_with<'rx, 'intx>(
+    fn interruptible_with<'rx, 'intx, 'fn_intx>(
         self,
-        interruptibility_state: InterruptibilityState<'rx, 'intx>,
-    ) -> InterruptibleStream<'rx, 'intx, Self>
+        interruptibility_state: InterruptibilityState<'rx, 'intx, 'fn_intx>,
+    ) -> InterruptibleStream<'rx, 'intx, 'fn_intx, Self>
     where
         Self: Sized + 'rx;
 
@@ -92,7 +92,7 @@ pub trait InterruptibleStreamExt {
     /// [`FinishCurrent`]: crate::InterruptStrategy::FinishCurrent
     /// [`tokio::signal::ctrl_c`]: https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, 'static, Self>
+    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, 'static, 'static, Self>
     where
         Self: Sized;
 }
@@ -104,7 +104,7 @@ where
     fn interruptible(
         self,
         interrupt_rx: OwnedOrMutRef<'_, mpsc::Receiver<InterruptSignal>>,
-    ) -> InterruptibleStream<'_, 'static, Self>
+    ) -> InterruptibleStream<'_, 'static, 'static, Self>
     where
         Self: Sized,
     {
@@ -118,10 +118,10 @@ where
         )
     }
 
-    fn interruptible_with<'rx, 'intx>(
+    fn interruptible_with<'rx, 'intx, 'fn_intx>(
         self,
-        interruptibility_state: InterruptibilityState<'rx, 'intx>,
-    ) -> InterruptibleStream<'rx, 'intx, Self>
+        interruptibility_state: InterruptibilityState<'rx, 'intx, 'fn_intx>,
+    ) -> InterruptibleStream<'rx, 'intx, 'fn_intx, Self>
     where
         Self: Sized + 'rx,
     {
@@ -130,7 +130,7 @@ where
 
     #[cfg(feature = "ctrl_c")]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, 'static, Self>
+    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, 'static, 'static, Self>
     where
         Self: Sized,
     {

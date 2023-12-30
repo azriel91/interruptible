@@ -121,16 +121,14 @@ impl<'rx, 'intx, 'fn_intx> InterruptibilityState<'rx, 'intx, 'fn_intx> {
     }
 
     /// Reborrows this `InterruptibilityState` with a shorter lifetime.
-    pub fn reborrow<'rx_local, 'intx_local>(
-        &'intx_local mut self,
-    ) -> InterruptibilityState<'rx_local, 'intx_local, 'intx_local>
+    pub fn reborrow<'rx_local, 'intx_local, 'fn_intx_local>(
+        &'rx_local mut self,
+    ) -> InterruptibilityState<'rx_local, 'intx_local, 'fn_intx_local>
     where
-        'rx: 'rx_local,
-        'intx: 'intx_local + 'rx_local,
-        // The lifetime of the reference to the function, must outlive the lifetime of the future
-        // produced by the function.
-        'intx: 'fn_intx,
-        'intx_local: 'fn_intx,
+        'rx: 'rx_local + 'intx_local + 'fn_intx_local,
+        'intx: 'rx_local + 'intx_local + 'fn_intx_local,
+        'fn_intx: 'rx_local + 'intx_local + 'fn_intx_local,
+        'rx_local: 'intx_local,
     {
         let interruptibility = self.interruptibility.reborrow();
         let poll_since_interrupt_count = self.poll_since_interrupt_count.reborrow();

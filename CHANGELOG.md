@@ -1,6 +1,6 @@
 # Changelog
 
-## unreleased
+## 0.0.4 (2023-12-30)
 
 * Add `InterruptibilityState::is_interrupted`.
 * Add `InterruptibilityState::new_non_interruptible`.

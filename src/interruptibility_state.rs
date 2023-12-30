@@ -8,7 +8,7 @@ type FnInterrupt<'intx> = Box<dyn Fn() + 'intx>;
 
 /// Whether interruptibility is supported, and number of times interrupt signals
 /// have been received.
-pub struct InterruptibilityState<'rx, 'intx> {
+pub struct InterruptibilityState<'rx, 'intx, 'fn_intx> {
     /// Specifies interruptibility support of the application.
     pub(crate) interruptibility: Interruptibility<'rx>,
     /// Number of times an interrupt signal has been received.
@@ -22,10 +22,10 @@ pub struct InterruptibilityState<'rx, 'intx> {
     ///
     /// The function will only run once; subsequent polls will not run the
     /// function again.
-    fn_interrupt_activate: Option<OwnedOrRef<'intx, FnInterrupt<'intx>>>,
+    fn_interrupt_activate: Option<OwnedOrRef<'intx, FnInterrupt<'fn_intx>>>,
 }
 
-impl<'rx, 'intx> Debug for InterruptibilityState<'rx, 'intx> {
+impl<'rx, 'intx, 'fn_intx> Debug for InterruptibilityState<'rx, 'intx, 'fn_intx> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InterruptibilityState")
             .field("interruptibility", &self.interruptibility)
@@ -46,7 +46,7 @@ impl<'rx, 'intx> Debug for InterruptibilityState<'rx, 'intx> {
     }
 }
 
-impl<'rx> InterruptibilityState<'rx, 'static> {
+impl<'rx> InterruptibilityState<'rx, 'static, 'static> {
     /// Returns a new [`InterruptibilityState`].
     pub fn new(interruptibility: Interruptibility<'rx>) -> Self {
         Self {
@@ -98,7 +98,7 @@ impl<'rx> InterruptibilityState<'rx, 'static> {
     }
 }
 
-impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
+impl<'rx, 'intx, 'fn_intx> InterruptibilityState<'rx, 'intx, 'fn_intx> {
     /// Sets the function to run when an interruption is activated.
     ///
     /// For `PollNextN`, this will run on the `n`th poll, rather than when the
@@ -106,13 +106,13 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
     ///
     /// The function will only run once; subsequent polls will not run the
     /// function again.
-    pub fn with_fn_interrupt_activate<'intx_local, F>(
+    pub fn with_fn_interrupt_activate<'fn_intx_local, F>(
         mut self,
         fn_interrupt_activate: Option<F>,
-    ) -> InterruptibilityState<'rx, 'intx_local>
+    ) -> InterruptibilityState<'rx, 'intx, 'fn_intx_local>
     where
-        'intx: 'intx_local,
-        F: Fn() + 'intx_local,
+        'intx: 'fn_intx + 'fn_intx_local,
+        F: Fn() + 'fn_intx_local,
     {
         self.fn_interrupt_activate = fn_interrupt_activate
             .map(|f| Box::new(f) as FnInterrupt<'intx>)
@@ -123,12 +123,14 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
     /// Reborrows this `InterruptibilityState` with a shorter lifetime.
     pub fn reborrow<'rx_local, 'intx_local>(
         &'intx_local mut self,
-    ) -> InterruptibilityState<'rx_local, 'intx_local>
+    ) -> InterruptibilityState<'rx_local, 'intx_local, 'intx_local>
     where
         'rx: 'rx_local,
         'intx: 'intx_local + 'rx_local,
-        'intx: 'intx_local,
-        'intx_local: 'rx_local,
+        // The lifetime of the reference to the function, must outlive the lifetime of the future
+        // produced by the function.
+        'intx: 'fn_intx,
+        'intx_local: 'fn_intx,
     {
         let interruptibility = self.interruptibility.reborrow();
         let poll_since_interrupt_count = self.poll_since_interrupt_count.reborrow();
@@ -311,7 +313,7 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
     }
 }
 
-impl<'rx> From<Interruptibility<'rx>> for InterruptibilityState<'rx, 'static> {
+impl<'rx> From<Interruptibility<'rx>> for InterruptibilityState<'rx, 'static, 'static> {
     /// Returns a new `InterruptibilityState`.
     fn from(interruptibility: Interruptibility<'rx>) -> Self {
         Self::new(interruptibility)

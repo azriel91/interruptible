@@ -23,16 +23,16 @@ run to completion, but the stream is not polled for the next item.
 Add the following to `Cargo.toml`
 
 ```toml
-interruptible = "0.0.3"
+interruptible = "0.0.4"
 
 # Enables `InterruptibleStreamExt`
-interruptible = { version = "0.0.3", features = ["stream"] }
+interruptible = { version = "0.0.4", features = ["stream"] }
 
 # Enables:
 #
 # * `InterruptibleFutureExt::{interruptible_control_ctrl_c, interruptible_result_ctrl_c}`
 # * `InterruptibleStreamExt::interruptible_ctrl_c` if the `"stream"` feature is also enabled.
-interruptible = { version = "0.0.3", features = ["ctrl_c"] }
+interruptible = { version = "0.0.4", features = ["ctrl_c"] }
 ```
 
 # Examples

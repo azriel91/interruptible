@@ -90,6 +90,31 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
         }
     }
 
+    /// Returns if this `InterruptibilityState` is considered interrupted based
+    /// on the chosen strategy.
+    ///
+    /// * For `IgnoreInterruptions`, this always returns `false`.
+    /// * For `FinishCurrent`, this returns `true` after receiving at least one
+    ///   `InterruptSignal`.
+    /// * For `PollNextN`, this returns `true` if the stream has been polled at
+    ///   least `n` times since receiving the `InterruptSignal`.
+    pub fn is_interrupted(&self) -> bool {
+        match self.interruptibility {
+            Interruptibility::NonInterruptible => false,
+            Interruptibility::Interruptible {
+                interrupt_rx: _,
+                interrupt_strategy,
+            } => match interrupt_strategy {
+                InterruptStrategy::IgnoreInterruptions => false,
+                InterruptStrategy::FinishCurrent => self.interrupt_signal_received.is_some(),
+                InterruptStrategy::PollNextN(n) => {
+                    self.interrupt_signal_received.is_some()
+                        && *self.poll_since_interrupt_count >= n
+                }
+            },
+        }
+    }
+
     /// Tests if an item should be interrupted.
     ///
     /// If an interrupt signal has not been received, this returns `None`.
@@ -197,8 +222,72 @@ impl<'rx> From<Interruptibility<'rx>> for InterruptibilityState<'rx, 'static> {
 
 #[cfg(test)]
 mod tests {
+    use tokio::sync::mpsc;
+
+    use crate::{InterruptSignal, Interruptibility};
+
     use super::InterruptibilityState;
-    use crate::Interruptibility;
+
+    #[tokio::test]
+    async fn is_interrupted() -> Result<(), Box<dyn std::error::Error>> {
+        let interruptibility_state = InterruptibilityState::new_non_interruptible();
+        assert!(!interruptibility_state.is_interrupted());
+
+        let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let interrupt_rx = &mut interrupt_rx;
+
+        let interruptibility_state =
+            InterruptibilityState::new_ignore_interruptions(interrupt_rx.into());
+        assert!(!interruptibility_state.is_interrupted());
+
+        let interruptibility_state =
+            InterruptibilityState::new_ignore_interruptions(interrupt_rx.into());
+        assert!(!interruptibility_state.is_interrupted());
+
+        let interruptibility_state = InterruptibilityState::new_finish_current(interrupt_rx.into());
+        assert!(!interruptibility_state.is_interrupted());
+
+        let interruptibility_state = InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2);
+        assert!(!interruptibility_state.is_interrupted());
+
+        let mut interruptibility_state =
+            InterruptibilityState::new_ignore_interruptions(interrupt_rx.into());
+        interrupt_tx.send(InterruptSignal).await?;
+        interruptibility_state.item_interrupt_poll(true);
+        assert!(!interruptibility_state.is_interrupted());
+
+        let mut interruptibility_state =
+            InterruptibilityState::new_ignore_interruptions(interrupt_rx.into());
+        interrupt_tx.send(InterruptSignal).await?;
+        interruptibility_state.item_interrupt_poll(true);
+        assert!(!interruptibility_state.is_interrupted());
+
+        let mut interruptibility_state =
+            InterruptibilityState::new_finish_current(interrupt_rx.into());
+        interrupt_tx.send(InterruptSignal).await?;
+        interruptibility_state.item_interrupt_poll(true);
+        assert!(interruptibility_state.is_interrupted());
+
+        let mut interruptibility_state =
+            InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2);
+        interrupt_tx.send(InterruptSignal).await?;
+        interruptibility_state.item_interrupt_poll(true);
+        assert!(!interruptibility_state.is_interrupted());
+        interruptibility_state.item_interrupt_poll(true);
+        assert!(interruptibility_state.is_interrupted());
+
+        let mut interruptibility_state =
+            InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2);
+        interrupt_tx.send(InterruptSignal).await?;
+        interruptibility_state.item_interrupt_poll(true);
+        assert!(!interruptibility_state.is_interrupted());
+        interruptibility_state.item_interrupt_poll(false);
+        assert!(!interruptibility_state.is_interrupted());
+        interruptibility_state.item_interrupt_poll(true);
+        assert!(interruptibility_state.is_interrupted());
+
+        Ok(())
+    }
 
     #[test]
     fn debug() {

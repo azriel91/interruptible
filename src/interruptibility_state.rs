@@ -37,7 +37,7 @@ impl<'rx, 'intx> Debug for InterruptibilityState<'rx, 'intx> {
             .field(
                 "fn_interrupt_activate",
                 if self.fn_interrupt_activate.is_some() {
-                    &Some("Box<dyn Fn() -> BoxFuture<'static, ()>>")
+                    &Some("Box<dyn Fn() + 'intx>")
                 } else {
                     &None::<()>
                 },
@@ -321,6 +321,31 @@ mod tests {
     use super::InterruptibilityState;
 
     #[test]
+    fn reborrow() {
+        let mut interruptibility_state = InterruptibilityState::new_non_interruptible();
+        let mut reborrow_owned = interruptibility_state.reborrow();
+        let _reborrow_reborrow = reborrow_owned.reborrow();
+
+        let (_interrupt_tx, interrupt_rx) = mpsc::channel(16);
+        let mut interruptibility_state =
+            InterruptibilityState::new_ignore_interruptions(interrupt_rx.into());
+        let mut reborrow_owned = interruptibility_state.reborrow();
+        let _reborrow_reborrow = reborrow_owned.reborrow();
+
+        let (_interrupt_tx, interrupt_rx) = mpsc::channel(16);
+        let mut interruptibility_state =
+            InterruptibilityState::new_finish_current(interrupt_rx.into());
+        let mut reborrow_owned = interruptibility_state.reborrow();
+        let _reborrow_reborrow = reborrow_owned.reborrow();
+
+        let (_interrupt_tx, interrupt_rx) = mpsc::channel(16);
+        let mut interruptibility_state =
+            InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2);
+        let mut reborrow_owned = interruptibility_state.reborrow();
+        let _reborrow_reborrow = reborrow_owned.reborrow();
+    }
+
+    #[test]
     fn is_interrupted_returns_false_when_not_interrupted() {
         let interruptibility_state = InterruptibilityState::new_non_interruptible();
         assert!(!interruptibility_state.is_interrupted());
@@ -564,6 +589,19 @@ mod tests {
                 poll_since_interrupt_count: Owned(0), \
                 interrupt_signal_received: Owned(None), \
                 fn_interrupt_activate: None \
+            }",
+            format!("{interruptibility_state:?}")
+        );
+
+        let mut interruptibility_state = InterruptibilityState::new_non_interruptible();
+        interruptibility_state.set_fn_interrupt_activate(Some(|| {}));
+
+        assert_eq!(
+            "InterruptibilityState { \
+                interruptibility: NonInterruptible, \
+                poll_since_interrupt_count: Owned(0), \
+                interrupt_signal_received: Owned(None), \
+                fn_interrupt_activate: Some(\"Box<dyn Fn() + 'intx>\") \
             }",
             format!("{interruptibility_state:?}")
         );

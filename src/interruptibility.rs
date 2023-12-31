@@ -55,7 +55,7 @@ impl<'rx> Interruptibility<'rx> {
                 interrupt_rx,
                 interrupt_strategy,
             } => Interruptibility::Interruptible {
-                interrupt_rx: OwnedOrMutRef::MutRef(&mut *interrupt_rx),
+                interrupt_rx: interrupt_rx.reborrow(),
                 interrupt_strategy: *interrupt_strategy,
             },
         }

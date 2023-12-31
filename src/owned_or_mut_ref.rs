@@ -9,6 +9,18 @@ pub enum OwnedOrMutRef<'r, T> {
     MutRef(&'r mut T),
 }
 
+impl<'r, T> OwnedOrMutRef<'r, T> {
+    /// Reborrows this `OwnedOrMutRef` with a shorter lifetime.
+    ///
+    /// For an `Owned` variant, this borrows it as a `MutRef`.
+    pub fn reborrow(&mut self) -> OwnedOrMutRef<'_, T> {
+        match self {
+            OwnedOrMutRef::Owned(ref mut t) => OwnedOrMutRef::MutRef(t),
+            OwnedOrMutRef::MutRef(t) => OwnedOrMutRef::MutRef(t),
+        }
+    }
+}
+
 impl<'r, T> Deref for OwnedOrMutRef<'r, T> {
     type Target = T;
 
@@ -52,6 +64,16 @@ mod tests {
         let owned_or_mut_ref = OwnedOrMutRef::Owned(123);
 
         assert_eq!("Owned(123)", format!("{owned_or_mut_ref:?}"));
+    }
+
+    #[test]
+    fn reborrow() {
+        let mut owned = OwnedOrMutRef::Owned(123);
+        let mut n = 123;
+        let mut mut_ref = OwnedOrMutRef::MutRef(&mut n);
+
+        assert_eq!(OwnedOrMutRef::MutRef(&mut 123), owned.reborrow());
+        assert_eq!(OwnedOrMutRef::MutRef(&mut 123), mut_ref.reborrow());
     }
 
     #[test]

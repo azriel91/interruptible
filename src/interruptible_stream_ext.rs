@@ -21,9 +21,9 @@ pub trait InterruptibleStreamExt {
     fn interruptible(
         self,
         interrupt_rx: OwnedOrMutRef<'_, mpsc::Receiver<InterruptSignal>>,
-    ) -> InterruptibleStream<'_, 'static, Self>
+    ) -> InterruptibleStream<'_, 'static, Self, <Self as Stream>::Item>
     where
-        Self: Sized;
+        Self: Stream + Sized;
 
     /// Wraps a stream to allow it to gracefully stop.
     ///
@@ -77,9 +77,9 @@ pub trait InterruptibleStreamExt {
     fn interruptible_with<'rx, 'intx>(
         self,
         interruptibility_state: InterruptibilityState<'rx, 'intx>,
-    ) -> InterruptibleStream<'rx, 'intx, Self>
+    ) -> InterruptibleStream<'rx, 'intx, Self, <Self as Stream>::Item>
     where
-        Self: Sized + 'rx;
+        Self: Stream + Sized + 'rx;
 
     /// Wraps a stream with the [`FinishCurrent`] interrupt strategy, and spawns
     /// a [`tokio::signal::ctrl_c`] handler to listen for interruptions.
@@ -92,9 +92,11 @@ pub trait InterruptibleStreamExt {
     /// [`FinishCurrent`]: crate::InterruptStrategy::FinishCurrent
     /// [`tokio::signal::ctrl_c`]: https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, 'static, Self>
+    fn interruptible_ctrl_c(
+        self,
+    ) -> InterruptibleStream<'static, 'static, Self, <Self as Stream>::Item>
     where
-        Self: Sized;
+        Self: Stream + Sized;
 }
 
 impl<S> InterruptibleStreamExt for S
@@ -104,9 +106,9 @@ where
     fn interruptible(
         self,
         interrupt_rx: OwnedOrMutRef<'_, mpsc::Receiver<InterruptSignal>>,
-    ) -> InterruptibleStream<'_, 'static, Self>
+    ) -> InterruptibleStream<'_, 'static, Self, <Self as Stream>::Item>
     where
-        Self: Sized,
+        Self: Stream + Sized,
     {
         InterruptibleStream::new(
             self,
@@ -121,18 +123,20 @@ where
     fn interruptible_with<'rx, 'intx>(
         self,
         interruptibility_state: InterruptibilityState<'rx, 'intx>,
-    ) -> InterruptibleStream<'rx, 'intx, Self>
+    ) -> InterruptibleStream<'rx, 'intx, Self, <Self as Stream>::Item>
     where
-        Self: Sized + 'rx,
+        Self: Stream + Sized + 'rx,
     {
         InterruptibleStream::new(self, interruptibility_state)
     }
 
     #[cfg(feature = "ctrl_c")]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, 'static, Self>
+    fn interruptible_ctrl_c(
+        self,
+    ) -> InterruptibleStream<'static, 'static, Self, <Self as Stream>::Item>
     where
-        Self: Sized,
+        Self: Stream + Sized,
     {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
         tokio::task::spawn(

@@ -1,14 +1,16 @@
 use std::{fmt, pin::Pin};
 
 use futures::{
+    future::Future,
     stream::Stream,
     task::{Context, Poll},
+    FutureExt,
 };
 
 use crate::{InterruptSignal, InterruptibilityState, PollOutcome};
 
 /// Wrapper around a `Stream` that adds interruptible behaviour.
-pub struct InterruptibleStream<'rx, 'intx, S> {
+pub struct InterruptibleStream<'rx, 'intx, S, Fut> {
     /// Underlying stream that produces values.
     stream: Pin<Box<S>>,
     /// Receiver for interrupt signal.
@@ -22,7 +24,7 @@ pub struct InterruptibleStream<'rx, 'intx, S> {
     /// produces the item, we need to track whether the underlying stream has
     /// been polled and returned `Poll::Pending`, so we should be intentional
     /// whether or not to interrupt a stream that we have work in progress.
-    has_pending: bool,
+    future_pending: Option<Fut>,
     /// Whether an interrupt signal has previously been received from the
     /// `InterruptibilityState`.
     ///
@@ -33,20 +35,27 @@ pub struct InterruptibleStream<'rx, 'intx, S> {
     item_polled_is_counted: bool,
 }
 
-impl<'rx, 'intx, S> fmt::Debug for InterruptibleStream<'rx, 'intx, S> {
+impl<'rx, 'intx, S, Fut> fmt::Debug for InterruptibleStream<'rx, 'intx, S, Fut> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InterruptibleStream")
             .field("stream", &"..")
             .field("interruptibility_state", &self.interruptibility_state)
             .field("interrupted_and_notified", &self.interrupted_and_notified)
-            .field("has_pending", &self.has_pending)
+            .field(
+                "future_pending",
+                if self.future_pending.is_some() {
+                    &Some(())
+                } else {
+                    &None::<()>
+                },
+            )
             .field("interrupt_signal", &self.interrupt_signal)
             .field("item_polled_is_counted", &self.item_polled_is_counted)
             .finish()
     }
 }
 
-impl<'rx, 'intx, S> InterruptibleStream<'rx, 'intx, S>
+impl<'rx, 'intx, S, Fut> InterruptibleStream<'rx, 'intx, S, Fut>
 where
     S: Stream,
 {
@@ -59,87 +68,104 @@ where
             stream: Box::pin(stream),
             interruptibility_state,
             interrupted_and_notified: false,
-            has_pending: false,
+            future_pending: None,
             interrupt_signal: None,
             item_polled_is_counted: false,
         }
     }
 
+    fn interrupt_check(&mut self) {
+        // Check for interrupt within an item.
+        if self.interrupt_signal.is_none() {
+            let item_needs_counting = !self.item_polled_is_counted;
+            let poll_count_before = self.interruptibility_state.poll_since_interrupt_count();
+            self.interrupt_signal = self
+                .interruptibility_state
+                .item_interrupt_poll(item_needs_counting);
+            let poll_count_after = self.interruptibility_state.poll_since_interrupt_count();
+
+            self.item_polled_is_counted = poll_count_before != poll_count_after;
+        }
+    }
+
+    fn poll_future_item(
+        &mut self,
+        mut future_pending: Fut,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<PollOutcome<<Fut as Future>::Output>>>
+    where
+        Fut: Future + Unpin,
+    {
+        let poll_future = Pin::new(&mut future_pending).poll(cx);
+        match poll_future {
+            Poll::Ready(item) => match self.interrupt_signal {
+                Some(_interrupt_signal) => {
+                    self.future_pending = None;
+                    self.interrupted_and_notified = true;
+                    self.fn_interrupt_poll_run();
+                    Poll::Ready(Some(PollOutcome::Interrupted(Some(item))))
+                }
+                None => {
+                    self.future_pending = None;
+                    Poll::Ready(Some(PollOutcome::NoInterrupt(item)))
+                }
+            },
+            Poll::Pending => {
+                self.future_pending = Some(future_pending);
+                Poll::Pending
+            }
+        }
+    }
+
     /// Runs `fn_interrupt_poll` if it exists.
-    fn fn_interrupt_poll_run(self: Pin<&mut Self>) {
+    fn fn_interrupt_poll_run(&mut self) {
         if let Some(fn_interrupt_poll) = self.interruptibility_state.fn_interrupt_poll_item() {
             (*fn_interrupt_poll)();
         }
     }
 }
 
-impl<'rx, 'intx, S> Stream for InterruptibleStream<'rx, 'intx, S>
+impl<'rx, 'intx, S, Fut> Stream for InterruptibleStream<'rx, 'intx, S, Fut>
 where
-    S: Stream,
+    S: Stream<Item = Fut>,
+    Fut: Future + Unpin,
 {
-    type Item = PollOutcome<S::Item>;
+    // Accept a `Stream<Item = Future<Output = T>>` rather than `Stream<Item = T>`.
+    //
+    // So that `InterruptibleStream` knows that it's producing a future, and thus
+    // can poll that future when it is polled, rather than `T` that may be a future,
+    // whose delegate stream polls the `T: Future`.
+    type Item = PollOutcome<Fut::Output>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.interrupted_and_notified {
             return Poll::Ready(None);
         }
 
-        if self.has_pending {
-            let poll = self.stream.as_mut().poll_next(cx);
-            self.has_pending = poll.is_pending();
-
-            // Poll for interrupt within an item.
-            if self.interrupt_signal.is_none() {
-                let item_needs_counting = !self.item_polled_is_counted;
-                let poll_count_before = self.interruptibility_state.poll_since_interrupt_count();
-                self.interrupt_signal = self
-                    .interruptibility_state
-                    .item_interrupt_poll(item_needs_counting);
-                let poll_count_after = self.interruptibility_state.poll_since_interrupt_count();
-
-                self.item_polled_is_counted = poll_count_before != poll_count_after;
-            }
-
-            poll.map(|item_opt| {
-                item_opt.map(|item| match self.interrupt_signal {
-                    Some(_interrupt_signal) => {
-                        self.interrupted_and_notified = true;
-                        self.fn_interrupt_poll_run();
-                        PollOutcome::Interrupted(Some(item))
-                    }
-                    None => PollOutcome::NoInterrupt(item),
-                })
-            })
+        self.interrupt_check();
+        if let Some(future_pending) = self.future_pending.take() {
+            self.poll_future_item(future_pending, cx)
         } else {
-            // Poll for interrupt signals between items.
-            let poll_count_before = self.interruptibility_state.poll_since_interrupt_count();
-            match self.interruptibility_state.item_interrupt_poll(true) {
-                Some(interrupt_signal) => {
-                    self.interrupt_signal = Some(interrupt_signal);
+            match self.interrupt_signal {
+                Some(_interrupt_signal) => {
                     self.interrupted_and_notified = true;
-
                     self.fn_interrupt_poll_run();
-                    return Poll::Ready(Some(PollOutcome::Interrupted(None)));
+                    Poll::Ready(Some(PollOutcome::Interrupted(None)))
                 }
-                None => self.interrupt_signal = None,
-            }
-            let poll_count_after = self.interruptibility_state.poll_since_interrupt_count();
-
-            let poll = self.stream.as_mut().poll_next(cx);
-            self.has_pending = poll.is_pending();
-
-            self.item_polled_is_counted = poll_count_before != poll_count_after;
-
-            poll.map(|item_opt| {
-                item_opt.map(|item| match self.interrupt_signal {
-                    Some(_interrupt_signal) => {
-                        self.interrupted_and_notified = true;
-                        self.fn_interrupt_poll_run();
-                        PollOutcome::Interrupted(Some(item))
+                None => {
+                    let poll_stream = self.stream.as_mut().poll_next(cx);
+                    match poll_stream {
+                        Poll::Ready(item_opt) => {
+                            self.future_pending = item_opt;
+                        }
+                        Poll::Pending => {
+                            self.future_pending = None;
+                        }
                     }
-                    None => PollOutcome::NoInterrupt(item),
-                })
-            })
+
+                    Poll::Pending
+                }
+            }
         }
     }
 

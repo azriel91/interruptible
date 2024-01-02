@@ -23,6 +23,27 @@ pub struct InterruptibilityState<'rx, 'intx> {
     /// The function will only run once; subsequent polls will not run the
     /// function again.
     fn_interrupt_activate: Option<OwnedOrRef<'intx, FnInterrupt<'intx>>>,
+    /// Function to run the first time the underlying stream is polled after an
+    /// interruption is activated.
+    ///
+    /// For `PollNextN`, this will run on the `n`th poll, rather than when the
+    /// `InterruptSignal` is received.
+    ///
+    /// The function will only run once; subsequent polls will not run the
+    /// function again.
+    ///
+    /// # Notes
+    ///
+    /// This differs from `fn_interrupt_activate` in that
+    /// `fn_interrupt_activate` is run when the interruption is activated, and
+    /// any poll occurs that may be advancing a previously polled item. i.e.
+    /// `self.stream.poll()` may still return `Poll::Pending`, so
+    /// `PollOutcome::Interrupted` is not yet surfaced to the consumer of the
+    /// `InterruptibleStream`.
+    ///
+    /// Whereas `fn_interrupt_poll_item` is run when the poll actually polls a
+    /// new item from the underlying stream.
+    fn_interrupt_poll_item: Option<OwnedOrRef<'intx, FnInterrupt<'intx>>>,
 }
 
 impl<'rx, 'intx> Debug for InterruptibilityState<'rx, 'intx> {
@@ -54,6 +75,7 @@ impl<'rx> InterruptibilityState<'rx, 'static> {
             poll_since_interrupt_count: OwnedOrMutRef::Owned(0),
             interrupt_signal_received: OwnedOrMutRef::Owned(None),
             fn_interrupt_activate: None,
+            fn_interrupt_poll_item: None,
         }
     }
 
@@ -115,6 +137,35 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
             .map(OwnedOrRef::from);
     }
 
+    /// Sets the function to run the first time the underlying stream is polled
+    /// after an interruption is activated.
+    ///
+    /// For `PollNextN`, this will run on the `n`th poll, rather than when the
+    /// `InterruptSignal` is received.
+    ///
+    /// The function will only run once; subsequent polls will not run the
+    /// function again.
+    ///
+    /// # Notes
+    ///
+    /// This differs from `fn_interrupt_activate` in that
+    /// `fn_interrupt_activate` is run when the interruption is activated, and
+    /// any poll occurs that may be advancing a previously polled item. i.e.
+    /// `self.stream.poll()` may still return `Poll::Pending`, so
+    /// `PollOutcome::Interrupted` is not yet surfaced to the consumer of the
+    /// `InterruptibleStream`.
+    ///
+    /// Whereas `fn_interrupt_poll_item` is run when the poll actually polls a
+    /// new item from the underlying stream.
+    pub fn set_fn_interrupt_poll_item<F>(&mut self, fn_interrupt_poll_item: Option<F>)
+    where
+        F: Fn() + 'intx,
+    {
+        self.fn_interrupt_poll_item = fn_interrupt_poll_item
+            .map(|f| Box::new(f) as FnInterrupt<'intx>)
+            .map(OwnedOrRef::from);
+    }
+
     /// Reborrows this `InterruptibilityState` with a shorter lifetime.
     pub fn reborrow<'rx_local, 'intx_local>(
         &'rx_local mut self,
@@ -131,12 +182,17 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
             .fn_interrupt_activate
             .as_ref()
             .map(OwnedOrRef::reborrow);
+        let fn_interrupt_poll_item = self
+            .fn_interrupt_poll_item
+            .as_ref()
+            .map(OwnedOrRef::reborrow);
 
         InterruptibilityState {
             interruptibility,
             poll_since_interrupt_count,
             interrupt_signal_received,
             fn_interrupt_activate,
+            fn_interrupt_poll_item,
         }
     }
 
@@ -302,6 +358,12 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
     /// If the interruption signal has not been received, this returns 0.
     pub fn poll_since_interrupt_count(&self) -> u64 {
         *self.poll_since_interrupt_count
+    }
+
+    /// Returns the function to run the first time the underlying stream is
+    /// polled after an interruption is activated.
+    pub fn fn_interrupt_poll_item(&self) -> Option<&FnInterrupt<'intx>> {
+        self.fn_interrupt_poll_item.as_deref()
     }
 }
 

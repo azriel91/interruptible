@@ -64,6 +64,13 @@ where
             item_polled_is_counted: false,
         }
     }
+
+    /// Runs `fn_interrupt_poll` if it exists.
+    fn fn_interrupt_poll_run(self: Pin<&mut Self>) {
+        if let Some(fn_interrupt_poll) = self.interruptibility_state.fn_interrupt_poll_item() {
+            (*fn_interrupt_poll)();
+        }
+    }
 }
 
 impl<'rx, 'intx, S> Stream for InterruptibleStream<'rx, 'intx, S>
@@ -97,6 +104,7 @@ where
                 item_opt.map(|item| match self.interrupt_signal {
                     Some(_interrupt_signal) => {
                         self.interrupted_and_notified = true;
+                        self.fn_interrupt_poll_run();
                         PollOutcome::Interrupted(Some(item))
                     }
                     None => PollOutcome::NoInterrupt(item),
@@ -110,6 +118,7 @@ where
                     self.interrupt_signal = Some(interrupt_signal);
                     self.interrupted_and_notified = true;
 
+                    self.fn_interrupt_poll_run();
                     return Poll::Ready(Some(PollOutcome::Interrupted(None)));
                 }
                 None => self.interrupt_signal = None,
@@ -125,6 +134,7 @@ where
                 item_opt.map(|item| match self.interrupt_signal {
                     Some(_interrupt_signal) => {
                         self.interrupted_and_notified = true;
+                        self.fn_interrupt_poll_run();
                         PollOutcome::Interrupted(Some(item))
                     }
                     None => PollOutcome::NoInterrupt(item),

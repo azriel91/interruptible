@@ -105,14 +105,15 @@ where
         } else {
             // Poll for interrupt signals between items.
             let poll_count_before = self.interruptibility_state.poll_since_interrupt_count();
-            self.interrupt_signal = match self.interruptibility_state.item_interrupt_poll(true) {
-                Some(_interrupt_signal) => {
+            match self.interruptibility_state.item_interrupt_poll(true) {
+                Some(interrupt_signal) => {
+                    self.interrupt_signal = Some(interrupt_signal);
                     self.interrupted_and_notified = true;
 
                     return Poll::Ready(Some(PollOutcome::Interrupted(None)));
                 }
-                None => None,
-            };
+                None => self.interrupt_signal = None,
+            }
             let poll_count_after = self.interruptibility_state.poll_since_interrupt_count();
 
             let poll = self.stream.as_mut().poll_next(cx);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0 (2024-01-02)
+
+* Add `InterruptibilityState::set_fn_interrupt_activate` to run arbitrary function when interruption is activated.
+
+
 ## 0.0.4 (2023-12-30)
 
 * Add `InterruptibilityState::is_interrupted`.

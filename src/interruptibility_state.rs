@@ -271,7 +271,7 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
                             increment_item_count,
                             interrupt_signal_first_received,
                         ) {
-                            (false, true, _) | (true, _, false) => {
+                            (false, true, _) | (true, true, false) => {
                                 *self.poll_since_interrupt_count += 1
                             }
                             _ => {}
@@ -486,6 +486,10 @@ mod tests {
         assert!(!interruptibility_state.is_interrupted());
         interruptibility_state.item_interrupt_poll(false);
         assert!(!interruptibility_state.is_interrupted());
+        interruptibility_state.item_interrupt_poll(false);
+        assert!(!interruptibility_state.is_interrupted());
+        interruptibility_state.item_interrupt_poll(true);
+        assert!(!interruptibility_state.is_interrupted());
         interruptibility_state.item_interrupt_poll(true);
         assert!(interruptibility_state.is_interrupted());
 
@@ -563,6 +567,12 @@ mod tests {
                 .expect("Expected to send value.");
         }));
         interrupt_tx.send(InterruptSignal).await?;
+        interruptibility_state.item_interrupt_poll(true);
+        assert!(!interruptibility_state.is_interrupted());
+        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
+        interruptibility_state.item_interrupt_poll(false);
+        assert!(!interruptibility_state.is_interrupted());
+        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
         interruptibility_state.item_interrupt_poll(true);
         assert!(!interruptibility_state.is_interrupted());
         assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());

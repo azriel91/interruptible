@@ -21,9 +21,9 @@ pub trait InterruptibleStreamExt {
     fn interruptible(
         self,
         interrupt_rx: OwnedOrMutRef<'_, mpsc::Receiver<InterruptSignal>>,
-    ) -> InterruptibleStream<'_, 'static, Self, <Self as Stream>::Item>
+    ) -> InterruptibleStream<'_, 'static, Self>
     where
-        Self: Stream + Sized;
+        Self: Sized;
 
     /// Wraps a stream to allow it to gracefully stop.
     ///
@@ -77,9 +77,9 @@ pub trait InterruptibleStreamExt {
     fn interruptible_with<'rx, 'intx>(
         self,
         interruptibility_state: InterruptibilityState<'rx, 'intx>,
-    ) -> InterruptibleStream<'rx, 'intx, Self, <Self as Stream>::Item>
+    ) -> InterruptibleStream<'rx, 'intx, Self>
     where
-        Self: Stream + Sized + 'rx;
+        Self: Sized + 'rx;
 
     /// Wraps a stream with the [`FinishCurrent`] interrupt strategy, and spawns
     /// a [`tokio::signal::ctrl_c`] handler to listen for interruptions.
@@ -92,11 +92,9 @@ pub trait InterruptibleStreamExt {
     /// [`FinishCurrent`]: crate::InterruptStrategy::FinishCurrent
     /// [`tokio::signal::ctrl_c`]: https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html
     #[cfg(feature = "ctrl_c")]
-    fn interruptible_ctrl_c(
-        self,
-    ) -> InterruptibleStream<'static, 'static, Self, <Self as Stream>::Item>
+    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, 'static, Self>
     where
-        Self: Stream + Sized;
+        Self: Sized;
 }
 
 impl<S> InterruptibleStreamExt for S
@@ -106,9 +104,9 @@ where
     fn interruptible(
         self,
         interrupt_rx: OwnedOrMutRef<'_, mpsc::Receiver<InterruptSignal>>,
-    ) -> InterruptibleStream<'_, 'static, Self, <Self as Stream>::Item>
+    ) -> InterruptibleStream<'_, 'static, Self>
     where
-        Self: Stream + Sized,
+        Self: Sized,
     {
         InterruptibleStream::new(
             self,
@@ -123,20 +121,18 @@ where
     fn interruptible_with<'rx, 'intx>(
         self,
         interruptibility_state: InterruptibilityState<'rx, 'intx>,
-    ) -> InterruptibleStream<'rx, 'intx, Self, <Self as Stream>::Item>
+    ) -> InterruptibleStream<'rx, 'intx, Self>
     where
-        Self: Stream + Sized + 'rx,
+        Self: Sized + 'rx,
     {
         InterruptibleStream::new(self, interruptibility_state)
     }
 
     #[cfg(feature = "ctrl_c")]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn interruptible_ctrl_c(
-        self,
-    ) -> InterruptibleStream<'static, 'static, Self, <Self as Stream>::Item>
+    fn interruptible_ctrl_c(self) -> InterruptibleStream<'static, 'static, Self>
     where
-        Self: Stream + Sized,
+        Self: Sized,
     {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
         tokio::task::spawn(
@@ -165,9 +161,12 @@ where
 #[cfg(test)]
 mod tests {
     use futures::{stream, StreamExt};
-    use tokio::sync::{
-        mpsc::{self, error::SendError},
-        oneshot,
+    use tokio::{
+        sync::{
+            mpsc::{self, error::SendError},
+            oneshot,
+        },
+        task::yield_now,
     };
 
     use super::InterruptibleStreamExt;
@@ -326,6 +325,10 @@ mod tests {
             interruptible_stream.next().await
         );
         assert_eq!(
+            Some(PollOutcome::NoInterrupt(1u32)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(
             Some(PollOutcome::Interrupted(None)),
             interruptible_stream.next().await
         );
@@ -333,13 +336,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn interrupt_with_poll_next_n_returns_n_items_variant_interrupt_before() {
+    async fn interrupt_with_poll_next_n_returns_n_items_variant_interrupt_before_0() {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
             if n < 3 { Some((n, n + 1)) } else { None }
         })
-        .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 2).into());
+        .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 0).into());
+
+        interrupt_tx
+            .send(InterruptSignal)
+            .await
+            .expect("Expected to send `InterruptSignal`.");
+
+        // interruption polled here, so `None` is returned
+        assert_eq!(
+            Some(PollOutcome::Interrupted(None)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(None, interruptible_stream.next().await);
+    }
+
+    #[tokio::test]
+    async fn interrupt_with_poll_next_n_returns_n_items_variant_interrupt_before_1() {
+        let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+
+        let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
+            if n < 3 { Some((n, n + 1)) } else { None }
+        })
+        .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 1).into());
 
         interrupt_tx
             .send(InterruptSignal)
@@ -360,7 +385,76 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn interrupt_with_poll_next_n_returns_n_items_variant_interrupt_between() {
+    async fn interrupt_with_poll_next_n_returns_n_items_variant_interrupt_before_2() {
+        let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+
+        let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
+            if n < 3 { Some((n, n + 1)) } else { None }
+        })
+        .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 2).into());
+
+        interrupt_tx
+            .send(InterruptSignal)
+            .await
+            .expect("Expected to send `InterruptSignal`.");
+
+        // interruption polled here
+        assert_eq!(
+            Some(PollOutcome::NoInterrupt(0u32)),
+            interruptible_stream.next().await
+        );
+        // interruption also polled here
+        assert_eq!(
+            Some(PollOutcome::NoInterrupt(1u32)),
+            interruptible_stream.next().await
+        );
+        // interruption also polled here, so `None` is returned
+        assert_eq!(
+            Some(PollOutcome::Interrupted(None)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(None, interruptible_stream.next().await);
+    }
+
+    #[tokio::test]
+    async fn interrupt_with_poll_next_n_returns_n_items_variant_interrupt_before_3() {
+        let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+
+        let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
+            if n < 3 { Some((n, n + 1)) } else { None }
+        })
+        .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 3).into());
+
+        interrupt_tx
+            .send(InterruptSignal)
+            .await
+            .expect("Expected to send `InterruptSignal`.");
+
+        // interruption polled here
+        assert_eq!(
+            Some(PollOutcome::NoInterrupt(0u32)),
+            interruptible_stream.next().await
+        );
+        // interruption also polled here
+        assert_eq!(
+            Some(PollOutcome::NoInterrupt(1u32)),
+            interruptible_stream.next().await
+        );
+        // interruption also polled here
+        assert_eq!(
+            Some(PollOutcome::NoInterrupt(2u32)),
+            interruptible_stream.next().await
+        );
+        // interruption also polled here, so `None` is returned
+        assert_eq!(
+            Some(PollOutcome::Interrupted(None)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(None, interruptible_stream.next().await);
+    }
+
+    #[tokio::test]
+    async fn interrupt_with_poll_next_n_returns_n_items_variant_interrupt_between_0() {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
         let (interrupt_ready_tx, mut interrupt_ready_rx) = mpsc::channel::<()>(2);
         let (interrupted_tx, interrupted_rx) = oneshot::channel::<()>();
@@ -368,9 +462,6 @@ mod tests {
         let mut interruptible_stream = stream::unfold(
             (0u32, Some((interrupt_ready_tx, interrupted_rx))),
             move |(n, channel_tx_rx)| async move {
-                if n == 0 {
-                    return Some((0, (1, channel_tx_rx)));
-                }
                 if let Some((interrupt_ready_tx, interrupted_rx)) = channel_tx_rx {
                     interrupt_ready_tx
                         .send(())
@@ -387,7 +478,72 @@ mod tests {
                 }
             },
         )
-        .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 2).into());
+        .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 0).into());
+
+        let interrupt_task = async {
+            interrupt_ready_rx
+                .recv()
+                .await
+                .expect("Expected `interrupt_ready_rx`. to receive message.");
+            interrupt_tx
+                .send(InterruptSignal)
+                .await
+                .expect("Expected to send `InterruptSignal`.");
+            interrupted_tx
+                .send(())
+                .expect("Expected to notify future to return value.");
+        };
+
+        let ((poll_outcome_first, poll_outcome_second), ()) = tokio::join!(
+            async {
+                (
+                    interruptible_stream.next().await,
+                    interruptible_stream.next().await,
+                )
+            },
+            interrupt_task
+        );
+
+        // First item is not interrupted.
+        assert_eq!(
+            Some(PollOutcome::Interrupted(Some(0u32))),
+            poll_outcome_first
+        );
+        // Second item is `None`, as `PollNextN`'s value is used up by the
+        // interruption.
+        assert_eq!(None, poll_outcome_second);
+    }
+
+    #[tokio::test]
+    async fn interrupt_with_poll_next_n_returns_n_items_variant_interrupt_between_1() {
+        let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let (interrupt_ready_tx, mut interrupt_ready_rx) = mpsc::channel::<()>(2);
+        let (interrupted_tx, interrupted_rx) = oneshot::channel::<()>();
+
+        let mut interruptible_stream = stream::unfold(
+            (0u32, Some((interrupt_ready_tx, interrupted_rx))),
+            move |(n, channel_tx_rx)| async move {
+                if n <= 0 {
+                    return Some((n, (n + 1, channel_tx_rx)));
+                }
+                if let Some((interrupt_ready_tx, interrupted_rx)) = channel_tx_rx {
+                    interrupt_ready_tx
+                        .send(())
+                        .await
+                        .expect("Expected to send to interrupt ready channel.");
+                    let () = interrupted_rx
+                        .await
+                        .expect("Expected to be notified to return value.");
+                    yield_now().await;
+                }
+                if n < 3 {
+                    Some((n, (n + 1, None)))
+                } else {
+                    None
+                }
+            },
+        )
+        .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 1).into());
 
         let interrupt_task = async {
             interrupt_ready_rx
@@ -415,13 +571,81 @@ mod tests {
 
         // First item is not interrupted.
         assert_eq!(Some(PollOutcome::NoInterrupt(0u32)), poll_outcome_first);
+        // Second item is `Interrupted`, as `PollNextN`'s second value is used up by the
+        // interruption.
+        assert_eq!(
+            Some(PollOutcome::Interrupted(Some(1u32))),
+            poll_outcome_second
+        );
+        assert_eq!(None, interruptible_stream.next().await);
+    }
+
+    #[tokio::test]
+    async fn interrupt_with_poll_next_n_returns_n_items_variant_interrupt_between_2() {
+        let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let (interrupt_ready_tx, mut interrupt_ready_rx) = mpsc::channel::<()>(2);
+        let (interrupted_tx, interrupted_rx) = oneshot::channel::<()>();
+
+        let mut interruptible_stream = stream::unfold(
+            (0u32, Some((interrupt_ready_tx, interrupted_rx))),
+            move |(n, channel_tx_rx)| async move {
+                if n <= 1 {
+                    return Some((n, (n + 1, channel_tx_rx)));
+                }
+                if let Some((interrupt_ready_tx, interrupted_rx)) = channel_tx_rx {
+                    interrupt_ready_tx
+                        .send(())
+                        .await
+                        .expect("Expected to send to interrupt ready channel.");
+                    let () = interrupted_rx
+                        .await
+                        .expect("Expected to be notified to return value.");
+                    yield_now().await;
+                    yield_now().await;
+                }
+                if n < 3 {
+                    Some((n, (n + 1, None)))
+                } else {
+                    None
+                }
+            },
+        )
+        .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 2).into());
+
+        let interrupt_task = async {
+            interrupt_ready_rx
+                .recv()
+                .await
+                .expect("Expected `interrupt_ready_rx`. to receive message.");
+            interrupt_tx
+                .send(InterruptSignal)
+                .await
+                .expect("Expected to send `InterruptSignal`.");
+            interrupted_tx
+                .send(())
+                .expect("Expected to notify future to return value.");
+        };
+
+        let ((poll_outcome_first, poll_outcome_second, poll_outcome_third), ()) = tokio::join!(
+            async {
+                (
+                    interruptible_stream.next().await,
+                    interruptible_stream.next().await,
+                    interruptible_stream.next().await,
+                )
+            },
+            interrupt_task
+        );
+
+        // First item is not interrupted.
+        assert_eq!(Some(PollOutcome::NoInterrupt(0u32)), poll_outcome_first);
         // Second item is not interrupted, uses 1 of `PollNextN`.
         assert_eq!(Some(PollOutcome::NoInterrupt(1u32)), poll_outcome_second);
         // Third item is `None`, as `PollNextN`'s second value is used up by the
         // interruption.
         assert_eq!(
-            Some(PollOutcome::Interrupted(None)),
-            interruptible_stream.next().await
+            Some(PollOutcome::Interrupted(Some(2u32))),
+            poll_outcome_third
         );
         assert_eq!(None, interruptible_stream.next().await);
     }

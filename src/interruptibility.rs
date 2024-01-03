@@ -60,6 +60,17 @@ impl<'rx> Interruptibility<'rx> {
             },
         }
     }
+
+    /// Returns the `InterruptStrategy` if present.
+    pub fn strategy(&self) -> Option<InterruptStrategy> {
+        match self {
+            Interruptibility::NonInterruptible => None,
+            Interruptibility::Interruptible {
+                interrupt_rx: _,
+                interrupt_strategy,
+            } => Some(*interrupt_strategy),
+        }
+    }
 }
 
 #[cfg(test)]

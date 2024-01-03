@@ -144,7 +144,7 @@ where
                 None => {
                     let poll_stream = self.stream.as_mut().poll_next(cx);
                     self.has_pending = poll_stream.is_pending();
-                    poll_stream.map(|item_opt| item_opt.map(|item| PollOutcome::NoInterrupt(item)))
+                    poll_stream.map(|item_opt| item_opt.map(PollOutcome::NoInterrupt))
                 }
             }
         }

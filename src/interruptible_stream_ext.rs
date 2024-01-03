@@ -523,7 +523,7 @@ mod tests {
         let mut interruptible_stream = stream::unfold(
             (0u32, Some((interrupt_ready_tx, interrupted_rx))),
             move |(n, channel_tx_rx)| async move {
-                if n <= 0 {
+                if n == 0 {
                     return Some((n, (n + 1, channel_tx_rx)));
                 }
                 if let Some((interrupt_ready_tx, interrupted_rx)) = channel_tx_rx {

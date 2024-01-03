@@ -65,6 +65,10 @@ pub trait InterruptibleStreamExt {
     ///     interruptible_stream.next().await
     /// );
     /// assert_eq!(
+    ///     Some(PollOutcome::NoInterrupt(1)),
+    ///     interruptible_stream.next().await
+    /// );
+    /// assert_eq!(
     ///     Some(PollOutcome::Interrupted(None)),
     ///     interruptible_stream.next().await
     /// );

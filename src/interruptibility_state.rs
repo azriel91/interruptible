@@ -377,7 +377,7 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
 
     /// Returns the `InterruptStrategy` if present.
     pub fn interrupt_strategy(&self) -> Option<InterruptStrategy> {
-        self.interruptibility.strategy()
+        self.interruptibility.interrupt_strategy()
     }
 }
 
@@ -392,7 +392,7 @@ impl<'rx> From<Interruptibility<'rx>> for InterruptibilityState<'rx, 'static> {
 mod tests {
     use tokio::sync::mpsc::{self, error::TryRecvError};
 
-    use crate::{InterruptSignal, Interruptibility};
+    use crate::{InterruptSignal, InterruptStrategy, Interruptibility};
 
     use super::InterruptibilityState;
 
@@ -621,6 +621,22 @@ mod tests {
                 fn_interrupt_poll_item: None \
             }",
             format!("{interruptibility_state:?}")
+        );
+    }
+
+    #[test]
+    fn interrupt_strategy() {
+        let interruptibility_state =
+            InterruptibilityState::from(Interruptibility::NonInterruptible);
+
+        assert_eq!(None, interruptibility_state.interrupt_strategy());
+
+        let (_interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let interruptibility_state = InterruptibilityState::new_finish_current(interrupt_rx.into());
+
+        assert_eq!(
+            Some(InterruptStrategy::FinishCurrent),
+            interruptibility_state.interrupt_strategy()
         );
     }
 }

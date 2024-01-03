@@ -62,7 +62,7 @@ impl<'rx> Interruptibility<'rx> {
     }
 
     /// Returns the `InterruptStrategy` if present.
-    pub fn strategy(&self) -> Option<InterruptStrategy> {
+    pub fn interrupt_strategy(&self) -> Option<InterruptStrategy> {
         match self {
             Interruptibility::NonInterruptible => None,
             Interruptibility::Interruptible {
@@ -78,7 +78,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::Interruptibility;
-    use crate::InterruptStrategy;
+    use crate::{InterruptSignal, InterruptStrategy};
 
     #[test]
     fn debug() {
@@ -98,5 +98,21 @@ mod tests {
         };
 
         let _interruptibility = interruptibility.reborrow();
+    }
+
+    #[test]
+    fn interrupt_strategy() {
+        assert_eq!(
+            None,
+            Interruptibility::NonInterruptible.interrupt_strategy()
+        );
+
+        let (_interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let interruptibility = Interruptibility::finish_current(interrupt_rx.into());
+
+        assert_eq!(
+            Some(InterruptStrategy::FinishCurrent),
+            interruptibility.interrupt_strategy()
+        );
     }
 }

@@ -64,6 +64,60 @@ where
             item_polled_is_counted: false,
         }
     }
+
+    fn interrupt_check(&mut self) {
+        if self.interrupt_signal.is_none() {
+            let item_needs_counting = !self.item_polled_is_counted;
+            let poll_count_before = self.interruptibility_state.poll_since_interrupt_count();
+            self.interrupt_signal = self
+                .interruptibility_state
+                .item_interrupt_poll(item_needs_counting);
+            let poll_count_after = self.interruptibility_state.poll_since_interrupt_count();
+            self.item_polled_is_counted = poll_count_before != poll_count_after;
+        }
+    }
+
+    fn poll_future_item(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<PollOutcome<<S as Stream>::Item>>>
+    where
+        S: Stream,
+    {
+        let poll_stream = self.stream.as_mut().poll_next(cx);
+        match poll_stream {
+            Poll::Ready(item_opt) => {
+                self.has_pending = false;
+                match self.interrupt_signal {
+                    Some(_interrupt_signal) => {
+                        self.interrupted_and_notified = true;
+                        self.fn_interrupt_poll_run();
+                        Poll::Ready(Some(PollOutcome::Interrupted(item_opt)))
+                    }
+                    None => match item_opt {
+                        Some(item) => Poll::Ready(Some(PollOutcome::NoInterrupt(item))),
+                        None => Poll::Ready(None),
+                    },
+                }
+            }
+
+            // Notably we cannot send any information that we are interrupted through
+            // `Poll::Pending`; but only in `Poll::Ready`.
+            //
+            // However, consumers are able to know immediately through the `fn_interrupt_activate`
+            // hook set on `InterruptibilityState`.
+
+            // self.has_pending = true; // retained from existing state.
+            Poll::Pending => Poll::Pending,
+        }
+    }
+
+    /// Runs `fn_interrupt_poll` if it exists.
+    fn fn_interrupt_poll_run(&mut self) {
+        if let Some(fn_interrupt_poll) = self.interruptibility_state.fn_interrupt_poll_item() {
+            (*fn_interrupt_poll)();
+        }
+    }
 }
 
 impl<'rx, 'intx, S> Stream for InterruptibleStream<'rx, 'intx, S>
@@ -77,59 +131,22 @@ where
             return Poll::Ready(None);
         }
 
+        self.interrupt_check();
         if self.has_pending {
-            let poll = self.stream.as_mut().poll_next(cx);
-            self.has_pending = poll.is_pending();
-
-            // Poll for interrupt within an item.
-            if self.interrupt_signal.is_none() {
-                let item_needs_counting = !self.item_polled_is_counted;
-                let poll_count_before = self.interruptibility_state.poll_since_interrupt_count();
-                self.interrupt_signal = self
-                    .interruptibility_state
-                    .item_interrupt_poll(item_needs_counting);
-                let poll_count_after = self.interruptibility_state.poll_since_interrupt_count();
-
-                self.item_polled_is_counted = poll_count_before != poll_count_after;
-            }
-
-            poll.map(|item_opt| {
-                item_opt.map(|item| match self.interrupt_signal {
-                    Some(_interrupt_signal) => {
-                        self.interrupted_and_notified = true;
-                        PollOutcome::Interrupted(Some(item))
-                    }
-                    None => PollOutcome::NoInterrupt(item),
-                })
-            })
+            self.poll_future_item(cx)
         } else {
-            // Poll for interrupt signals between items.
-            let poll_count_before = self.interruptibility_state.poll_since_interrupt_count();
-            match self.interruptibility_state.item_interrupt_poll(true) {
-                Some(interrupt_signal) => {
-                    self.interrupt_signal = Some(interrupt_signal);
+            match self.interrupt_signal {
+                Some(_interrupt_signal) => {
                     self.interrupted_and_notified = true;
-
-                    return Poll::Ready(Some(PollOutcome::Interrupted(None)));
+                    self.fn_interrupt_poll_run();
+                    Poll::Ready(Some(PollOutcome::Interrupted(None)))
                 }
-                None => self.interrupt_signal = None,
+                None => {
+                    let poll_stream = self.stream.as_mut().poll_next(cx);
+                    self.has_pending = poll_stream.is_pending();
+                    poll_stream.map(|item_opt| item_opt.map(PollOutcome::NoInterrupt))
+                }
             }
-            let poll_count_after = self.interruptibility_state.poll_since_interrupt_count();
-
-            let poll = self.stream.as_mut().poll_next(cx);
-            self.has_pending = poll.is_pending();
-
-            self.item_polled_is_counted = poll_count_before != poll_count_after;
-
-            poll.map(|item_opt| {
-                item_opt.map(|item| match self.interrupt_signal {
-                    Some(_interrupt_signal) => {
-                        self.interrupted_and_notified = true;
-                        PollOutcome::Interrupted(Some(item))
-                    }
-                    None => PollOutcome::NoInterrupt(item),
-                })
-            })
         }
     }
 
@@ -140,10 +157,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use futures::{future, stream, Stream};
-    use tokio::sync::mpsc;
+    use futures::{future, stream, Stream, StreamExt};
+    use tokio::sync::mpsc::{self, error::TryRecvError};
 
-    use crate::{InterruptSignal, InterruptibleStreamExt};
+    use crate::{InterruptSignal, InterruptibilityState, InterruptibleStreamExt, PollOutcome};
 
     #[test]
     fn debug() {
@@ -164,5 +181,142 @@ mod tests {
 
         let interruptible_stream = stream::iter([1, 2, 3]).interruptible(interrupt_rx.into());
         assert_eq!((3, Some(3)), interruptible_stream.size_hint());
+    }
+
+    #[tokio::test]
+    async fn fn_interrupt_poll_item_is_run_only_when_poll_returns_ready()
+    -> Result<(), Box<dyn std::error::Error>> {
+        macro_rules! interruptible_stream {
+            ($interruptibility_state:ident) => {
+                stream::unfold(0u32, move |n| async move {
+                    if n < 3 { Some((n, n + 1)) } else { None }
+                })
+                .interruptible_with($interruptibility_state)
+            };
+        }
+
+        let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let interrupt_rx = &mut interrupt_rx;
+
+        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
+        let (interrupt_poll_item_tx, mut interrupt_poll_item_rx) = mpsc::channel::<u16>(16);
+        let mut interruptibility_state =
+            InterruptibilityState::new_ignore_interruptions(interrupt_rx.into());
+        interruptibility_state.set_fn_interrupt_activate(Some(|| {
+            interrupt_activate_tx
+                .try_send(100)
+                .expect("Expected to send value.");
+        }));
+        interruptibility_state.set_fn_interrupt_poll_item(Some(|| {
+            interrupt_poll_item_tx
+                .try_send(100)
+                .expect("Expected to send value.");
+        }));
+        interrupt_tx.send(InterruptSignal).await?;
+        let mut interruptible_stream = interruptible_stream!(interruptibility_state);
+        let _ = interruptible_stream.next().await;
+        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
+        assert_eq!(Err(TryRecvError::Empty), interrupt_poll_item_rx.try_recv());
+
+        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
+        let (interrupt_poll_item_tx, mut interrupt_poll_item_rx) = mpsc::channel::<u16>(16);
+        let mut interruptibility_state =
+            InterruptibilityState::new_ignore_interruptions(interrupt_rx.into());
+        interruptibility_state.set_fn_interrupt_activate(Some(|| {
+            interrupt_activate_tx
+                .try_send(101)
+                .expect("Expected to send value.");
+        }));
+        interruptibility_state.set_fn_interrupt_poll_item(Some(|| {
+            interrupt_poll_item_tx
+                .try_send(101)
+                .expect("Expected to send value.");
+        }));
+        interrupt_tx.send(InterruptSignal).await?;
+        let mut interruptible_stream = interruptible_stream!(interruptibility_state);
+        let _ = interruptible_stream.next().await;
+        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
+        assert_eq!(Err(TryRecvError::Empty), interrupt_poll_item_rx.try_recv());
+
+        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
+        let (interrupt_poll_item_tx, mut interrupt_poll_item_rx) = mpsc::channel::<u16>(16);
+        let mut interruptibility_state =
+            InterruptibilityState::new_finish_current(interrupt_rx.into());
+        interruptibility_state.set_fn_interrupt_activate(Some(|| {
+            interrupt_activate_tx
+                .try_send(102)
+                .expect("Expected to send value.");
+        }));
+        interruptibility_state.set_fn_interrupt_poll_item(Some(|| {
+            interrupt_poll_item_tx
+                .try_send(102)
+                .expect("Expected to send value.");
+        }));
+        interrupt_tx.send(InterruptSignal).await?;
+        let mut interruptible_stream = interruptible_stream!(interruptibility_state);
+        let _ = interruptible_stream.next().await;
+        assert_eq!(Ok(102), interrupt_activate_rx.try_recv());
+        assert_eq!(Ok(102), interrupt_poll_item_rx.try_recv());
+
+        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
+        let (interrupt_poll_item_tx, mut interrupt_poll_item_rx) = mpsc::channel::<u16>(16);
+        let mut interruptibility_state =
+            InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2);
+        interruptibility_state.set_fn_interrupt_activate(Some(|| {
+            interrupt_activate_tx
+                .try_send(103)
+                .expect("Expected to send value.");
+        }));
+        interruptibility_state.set_fn_interrupt_poll_item(Some(|| {
+            interrupt_poll_item_tx
+                .try_send(103)
+                .expect("Expected to send value.");
+        }));
+        interrupt_tx.send(InterruptSignal).await?;
+        let mut interruptible_stream = interruptible_stream!(interruptibility_state);
+        let _ = interruptible_stream.next().await;
+        let _ = interruptible_stream.next().await;
+        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
+        assert_eq!(Err(TryRecvError::Empty), interrupt_poll_item_rx.try_recv());
+        let _ = interruptible_stream.next().await;
+        assert_eq!(Ok(103), interrupt_activate_rx.try_recv());
+        assert_eq!(Ok(103), interrupt_poll_item_rx.try_recv());
+
+        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
+        let (interrupt_poll_item_tx, mut interrupt_poll_item_rx) = mpsc::channel::<u16>(16);
+        let mut interruptibility_state =
+            InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2);
+        interruptibility_state.set_fn_interrupt_activate(Some(|| {
+            interrupt_activate_tx
+                .try_send(104)
+                .expect("Expected to send value.");
+        }));
+        interruptibility_state.set_fn_interrupt_poll_item(Some(|| {
+            interrupt_poll_item_tx
+                .try_send(104)
+                .expect("Expected to send value.");
+        }));
+        interrupt_tx.send(InterruptSignal).await?;
+        let mut interruptible_stream = interruptible_stream!(interruptibility_state);
+        assert_eq!(
+            Some(PollOutcome::NoInterrupt(0)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
+        assert_eq!(Err(TryRecvError::Empty), interrupt_poll_item_rx.try_recv());
+        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
+        assert_eq!(Err(TryRecvError::Empty), interrupt_poll_item_rx.try_recv());
+        assert_eq!(
+            Some(PollOutcome::NoInterrupt(1)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(
+            Some(PollOutcome::Interrupted(None)),
+            interruptible_stream.next().await
+        );
+        assert_eq!(Ok(104), interrupt_activate_rx.try_recv());
+        assert_eq!(Ok(104), interrupt_poll_item_rx.try_recv());
+
+        Ok(())
     }
 }

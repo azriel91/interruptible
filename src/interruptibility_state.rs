@@ -23,6 +23,27 @@ pub struct InterruptibilityState<'rx, 'intx> {
     /// The function will only run once; subsequent polls will not run the
     /// function again.
     fn_interrupt_activate: Option<OwnedOrRef<'intx, FnInterrupt<'intx>>>,
+    /// Function to run the first time the underlying stream is polled after an
+    /// interruption is activated.
+    ///
+    /// For `PollNextN`, this will run on the `n`th poll, rather than when the
+    /// `InterruptSignal` is received.
+    ///
+    /// The function will only run once; subsequent polls will not run the
+    /// function again.
+    ///
+    /// # Notes
+    ///
+    /// This differs from `fn_interrupt_activate` in that
+    /// `fn_interrupt_activate` is run when the interruption is activated, and
+    /// any poll occurs that may be advancing a previously polled item. i.e.
+    /// `self.stream.poll()` may still return `Poll::Pending`, so
+    /// `PollOutcome::Interrupted` is not yet surfaced to the consumer of the
+    /// `InterruptibleStream`.
+    ///
+    /// Whereas `fn_interrupt_poll_item` is run when the poll actually polls a
+    /// new item from the underlying stream.
+    fn_interrupt_poll_item: Option<OwnedOrRef<'intx, FnInterrupt<'intx>>>,
 }
 
 impl<'rx, 'intx> Debug for InterruptibilityState<'rx, 'intx> {
@@ -42,6 +63,14 @@ impl<'rx, 'intx> Debug for InterruptibilityState<'rx, 'intx> {
                     &None::<()>
                 },
             )
+            .field(
+                "fn_interrupt_poll_item",
+                if self.fn_interrupt_poll_item.is_some() {
+                    &Some("Box<dyn Fn() + 'intx>")
+                } else {
+                    &None::<()>
+                },
+            )
             .finish()
     }
 }
@@ -54,6 +83,7 @@ impl<'rx> InterruptibilityState<'rx, 'static> {
             poll_since_interrupt_count: OwnedOrMutRef::Owned(0),
             interrupt_signal_received: OwnedOrMutRef::Owned(None),
             fn_interrupt_activate: None,
+            fn_interrupt_poll_item: None,
         }
     }
 
@@ -115,6 +145,35 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
             .map(OwnedOrRef::from);
     }
 
+    /// Sets the function to run the first time the underlying stream is polled
+    /// after an interruption is activated.
+    ///
+    /// For `PollNextN`, this will run on the `n`th poll, rather than when the
+    /// `InterruptSignal` is received.
+    ///
+    /// The function will only run once; subsequent polls will not run the
+    /// function again.
+    ///
+    /// # Notes
+    ///
+    /// This differs from `fn_interrupt_activate` in that
+    /// `fn_interrupt_activate` is run when the interruption is activated, and
+    /// any poll occurs that may be advancing a previously polled item. i.e.
+    /// `self.stream.poll()` may still return `Poll::Pending`, so
+    /// `PollOutcome::Interrupted` is not yet surfaced to the consumer of the
+    /// `InterruptibleStream`.
+    ///
+    /// Whereas `fn_interrupt_poll_item` is run when the poll actually polls a
+    /// new item from the underlying stream.
+    pub fn set_fn_interrupt_poll_item<F>(&mut self, fn_interrupt_poll_item: Option<F>)
+    where
+        F: Fn() + 'intx,
+    {
+        self.fn_interrupt_poll_item = fn_interrupt_poll_item
+            .map(|f| Box::new(f) as FnInterrupt<'intx>)
+            .map(OwnedOrRef::from);
+    }
+
     /// Reborrows this `InterruptibilityState` with a shorter lifetime.
     pub fn reborrow<'rx_local, 'intx_local>(
         &'rx_local mut self,
@@ -131,12 +190,17 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
             .fn_interrupt_activate
             .as_ref()
             .map(OwnedOrRef::reborrow);
+        let fn_interrupt_poll_item = self
+            .fn_interrupt_poll_item
+            .as_ref()
+            .map(OwnedOrRef::reborrow);
 
         InterruptibilityState {
             interruptibility,
             poll_since_interrupt_count,
             interrupt_signal_received,
             fn_interrupt_activate,
+            fn_interrupt_poll_item,
         }
     }
 
@@ -202,24 +266,38 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
 
                 match *self.interrupt_signal_received {
                     Some(interrupt_signal) => {
-                        if increment_item_count {
-                            *self.poll_since_interrupt_count += 1;
+                        match (
+                            matches!(interrupt_strategy, InterruptStrategy::PollNextN(_)),
+                            increment_item_count,
+                            interrupt_signal_first_received,
+                        ) {
+                            (false, true, _) | (true, _, false) => {
+                                *self.poll_since_interrupt_count += 1
+                            }
+                            _ => {}
                         }
                         let poll_since_interrupt_count = *self.poll_since_interrupt_count;
-                        Self::fn_interrupt_based_on_strategy(
-                            interrupt_strategy,
-                            poll_since_interrupt_count,
-                            interrupt_signal_first_received,
-                            self.fn_interrupt_activate
-                                .as_ref()
-                                .map(OwnedOrRef::reborrow),
-                        );
 
-                        Self::interrupt_signal_based_on_strategy(
+                        let interrupt_signal = Self::interrupt_signal_based_on_strategy(
                             interrupt_strategy,
                             interrupt_signal,
                             poll_since_interrupt_count,
-                        )
+                        );
+
+                        let fn_interrupt_activate = self
+                            .fn_interrupt_activate
+                            .as_ref()
+                            .map(OwnedOrRef::reborrow);
+                        if let Some((_interrupt_signal, fn_interrupt_activate)) =
+                            interrupt_signal.zip(fn_interrupt_activate)
+                        {
+                            Self::fn_interrupt_based_on_strategy(
+                                interrupt_strategy,
+                                &fn_interrupt_activate,
+                            );
+                        }
+
+                        interrupt_signal
                     }
                     None => None,
                 }
@@ -235,25 +313,12 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
     /// * For `PollNextN`, this runs if `poll_since_interrupt_count` equals `n`.
     fn fn_interrupt_based_on_strategy(
         interrupt_strategy: &InterruptStrategy,
-        poll_since_interrupt_count: u64,
-        interrupt_signal_first_received: bool,
-        fn_interrupt_activate: Option<OwnedOrRef<'_, FnInterrupt>>,
+        fn_interrupt_activate: &FnInterrupt,
     ) {
         match interrupt_strategy {
             InterruptStrategy::IgnoreInterruptions => {}
-            InterruptStrategy::FinishCurrent => {
-                if interrupt_signal_first_received {
-                    if let Some(fn_interrupt_activate) = fn_interrupt_activate.as_ref() {
-                        (*fn_interrupt_activate)();
-                    }
-                }
-            }
-            InterruptStrategy::PollNextN(n) => {
-                if poll_since_interrupt_count == *n {
-                    if let Some(fn_interrupt_activate) = fn_interrupt_activate.as_ref() {
-                        (*fn_interrupt_activate)();
-                    }
-                }
+            InterruptStrategy::FinishCurrent | InterruptStrategy::PollNextN(_) => {
+                (*fn_interrupt_activate)();
             }
         }
     }
@@ -303,6 +368,17 @@ impl<'rx, 'intx> InterruptibilityState<'rx, 'intx> {
     pub fn poll_since_interrupt_count(&self) -> u64 {
         *self.poll_since_interrupt_count
     }
+
+    /// Returns the function to run the first time the underlying stream is
+    /// polled after an interruption is activated.
+    pub fn fn_interrupt_poll_item(&self) -> Option<&FnInterrupt<'intx>> {
+        self.fn_interrupt_poll_item.as_deref()
+    }
+
+    /// Returns the `InterruptStrategy` if present.
+    pub fn interrupt_strategy(&self) -> Option<InterruptStrategy> {
+        self.interruptibility.interrupt_strategy()
+    }
 }
 
 impl<'rx> From<Interruptibility<'rx>> for InterruptibilityState<'rx, 'static> {
@@ -316,7 +392,7 @@ impl<'rx> From<Interruptibility<'rx>> for InterruptibilityState<'rx, 'static> {
 mod tests {
     use tokio::sync::mpsc::{self, error::TryRecvError};
 
-    use crate::{InterruptSignal, Interruptibility};
+    use crate::{InterruptSignal, InterruptStrategy, Interruptibility};
 
     use super::InterruptibilityState;
 
@@ -395,6 +471,9 @@ mod tests {
         let mut interruptibility_state =
             InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2);
         interrupt_tx.send(InterruptSignal).await?;
+        // The first item is not counted, since `poll_next_n` wants `n` more items.
+        interruptibility_state.item_interrupt_poll(true);
+        assert!(!interruptibility_state.is_interrupted());
         interruptibility_state.item_interrupt_poll(true);
         assert!(!interruptibility_state.is_interrupted());
         interruptibility_state.item_interrupt_poll(true);
@@ -409,89 +488,6 @@ mod tests {
         assert!(!interruptibility_state.is_interrupted());
         interruptibility_state.item_interrupt_poll(true);
         assert!(interruptibility_state.is_interrupted());
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn with_fn_interrupt_activate_runs_when_interrupt_activated()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
-        let interrupt_rx = &mut interrupt_rx;
-
-        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
-        let mut interruptibility_state =
-            InterruptibilityState::new_ignore_interruptions(interrupt_rx.into());
-        interruptibility_state.set_fn_interrupt_activate(Some(|| {
-            interrupt_activate_tx
-                .try_send(100)
-                .expect("Expected to send value.");
-        }));
-        interrupt_tx.send(InterruptSignal).await?;
-        interruptibility_state.item_interrupt_poll(true);
-        assert!(!interruptibility_state.is_interrupted());
-        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
-
-        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
-        let mut interruptibility_state =
-            InterruptibilityState::new_ignore_interruptions(interrupt_rx.into());
-        interruptibility_state.set_fn_interrupt_activate(Some(|| {
-            interrupt_activate_tx
-                .try_send(101)
-                .expect("Expected to send value.");
-        }));
-        interrupt_tx.send(InterruptSignal).await?;
-        interruptibility_state.item_interrupt_poll(true);
-        assert!(!interruptibility_state.is_interrupted());
-        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
-
-        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
-        let mut interruptibility_state =
-            InterruptibilityState::new_finish_current(interrupt_rx.into());
-        interruptibility_state.set_fn_interrupt_activate(Some(|| {
-            interrupt_activate_tx
-                .try_send(102)
-                .expect("Expected to send value.");
-        }));
-        interrupt_tx.send(InterruptSignal).await?;
-        interruptibility_state.item_interrupt_poll(true);
-        assert!(interruptibility_state.is_interrupted());
-        assert_eq!(Ok(102), interrupt_activate_rx.try_recv());
-
-        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
-        let mut interruptibility_state =
-            InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2);
-        interruptibility_state.set_fn_interrupt_activate(Some(|| {
-            interrupt_activate_tx
-                .try_send(103)
-                .expect("Expected to send value.");
-        }));
-        interrupt_tx.send(InterruptSignal).await?;
-        interruptibility_state.item_interrupt_poll(true);
-        assert!(!interruptibility_state.is_interrupted());
-        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
-        interruptibility_state.item_interrupt_poll(true);
-        assert!(interruptibility_state.is_interrupted());
-        assert_eq!(Ok(103), interrupt_activate_rx.try_recv());
-
-        let (interrupt_activate_tx, mut interrupt_activate_rx) = mpsc::channel::<u16>(16);
-        let mut interruptibility_state =
-            InterruptibilityState::new_poll_next_n(interrupt_rx.into(), 2);
-        interruptibility_state.set_fn_interrupt_activate(Some(|| {
-            interrupt_activate_tx
-                .try_send(104)
-                .expect("Expected to send value.");
-        }));
-        interrupt_tx.send(InterruptSignal).await?;
-        interruptibility_state.item_interrupt_poll(true);
-        assert!(!interruptibility_state.is_interrupted());
-        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
-        interruptibility_state.item_interrupt_poll(false);
-        assert!(!interruptibility_state.is_interrupted());
-        assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
-        interruptibility_state.item_interrupt_poll(true);
-        assert!(interruptibility_state.is_interrupted());
-        assert_eq!(Ok(104), interrupt_activate_rx.try_recv());
 
         Ok(())
     }
@@ -551,6 +547,7 @@ mod tests {
         }));
         interrupt_tx.send(InterruptSignal).await?;
         interruptibility_state.item_interrupt_poll(true);
+        interruptibility_state.item_interrupt_poll(true);
         assert!(!interruptibility_state.is_interrupted());
         assert_eq!(Err(TryRecvError::Empty), interrupt_activate_rx.try_recv());
         interruptibility_state.item_interrupt_poll(true);
@@ -588,20 +585,23 @@ mod tests {
                 interruptibility: NonInterruptible, \
                 poll_since_interrupt_count: Owned(0), \
                 interrupt_signal_received: Owned(None), \
-                fn_interrupt_activate: None \
+                fn_interrupt_activate: None, \
+                fn_interrupt_poll_item: None \
             }",
             format!("{interruptibility_state:?}")
         );
 
         let mut interruptibility_state = InterruptibilityState::new_non_interruptible();
         interruptibility_state.set_fn_interrupt_activate(Some(|| {}));
+        interruptibility_state.set_fn_interrupt_poll_item(Some(|| {}));
 
         assert_eq!(
             "InterruptibilityState { \
                 interruptibility: NonInterruptible, \
                 poll_since_interrupt_count: Owned(0), \
                 interrupt_signal_received: Owned(None), \
-                fn_interrupt_activate: Some(\"Box<dyn Fn() + 'intx>\") \
+                fn_interrupt_activate: Some(\"Box<dyn Fn() + 'intx>\"), \
+                fn_interrupt_poll_item: Some(\"Box<dyn Fn() + 'intx>\") \
             }",
             format!("{interruptibility_state:?}")
         );
@@ -617,9 +617,26 @@ mod tests {
                 interruptibility: NonInterruptible, \
                 poll_since_interrupt_count: Owned(0), \
                 interrupt_signal_received: Owned(None), \
-                fn_interrupt_activate: None \
+                fn_interrupt_activate: None, \
+                fn_interrupt_poll_item: None \
             }",
             format!("{interruptibility_state:?}")
+        );
+    }
+
+    #[test]
+    fn interrupt_strategy() {
+        let interruptibility_state =
+            InterruptibilityState::from(Interruptibility::NonInterruptible);
+
+        assert_eq!(None, interruptibility_state.interrupt_strategy());
+
+        let (_interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
+        let interruptibility_state = InterruptibilityState::new_finish_current(interrupt_rx.into());
+
+        assert_eq!(
+            Some(InterruptStrategy::FinishCurrent),
+            interruptibility_state.interrupt_strategy()
         );
     }
 }

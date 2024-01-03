@@ -5,7 +5,7 @@ use futures::{
     task::{Context, Poll},
 };
 
-use crate::{InterruptSignal, InterruptibilityState, PollOutcome};
+use crate::{InterruptSignal, InterruptStrategy, InterruptibilityState, PollOutcome};
 
 /// Wrapper around a `Stream` that adds interruptible behaviour.
 pub struct InterruptibleStream<'rx, 'intx, S> {
@@ -66,8 +66,11 @@ where
     }
 
     fn interrupt_check(&mut self) {
-        if self.interrupt_signal.is_none() {
-            let item_needs_counting = !self.item_polled_is_counted;
+        if self.interrupt_signal.is_none() && !self.item_polled_is_counted {
+            let item_needs_counting = match self.interruptibility_state.interrupt_strategy() {
+                Some(InterruptStrategy::PollNextN(_n)) => !self.has_pending,
+                _ => true,
+            };
             let poll_count_before = self.interruptibility_state.poll_since_interrupt_count();
             self.interrupt_signal = self
                 .interruptibility_state
@@ -86,20 +89,17 @@ where
     {
         let poll_stream = self.stream.as_mut().poll_next(cx);
         match poll_stream {
-            Poll::Ready(item_opt) => {
-                self.has_pending = false;
-                match self.interrupt_signal {
-                    Some(_interrupt_signal) => {
-                        self.interrupted_and_notified = true;
-                        self.fn_interrupt_poll_run();
-                        Poll::Ready(Some(PollOutcome::Interrupted(item_opt)))
-                    }
-                    None => match item_opt {
-                        Some(item) => Poll::Ready(Some(PollOutcome::NoInterrupt(item))),
-                        None => Poll::Ready(None),
-                    },
+            Poll::Ready(item_opt) => match self.interrupt_signal {
+                Some(_interrupt_signal) => {
+                    self.interrupted_and_notified = true;
+                    self.fn_interrupt_poll_run();
+                    Poll::Ready(Some(PollOutcome::Interrupted(item_opt)))
                 }
-            }
+                None => match item_opt {
+                    Some(item) => Poll::Ready(Some(PollOutcome::NoInterrupt(item))),
+                    None => Poll::Ready(None),
+                },
+            },
 
             // Notably we cannot send any information that we are interrupted through
             // `Poll::Pending`; but only in `Poll::Ready`.
@@ -132,14 +132,33 @@ where
         }
 
         self.interrupt_check();
-        if self.has_pending {
+        let poll = if self.has_pending {
             self.poll_future_item(cx)
         } else {
             match self.interrupt_signal {
                 Some(_interrupt_signal) => {
-                    self.interrupted_and_notified = true;
-                    self.fn_interrupt_poll_run();
-                    Poll::Ready(Some(PollOutcome::Interrupted(None)))
+                    match self.interruptibility_state.interrupt_strategy() {
+                        Some(InterruptStrategy::PollNextN(n))
+                            if n > 0
+                                && n >= self
+                                    .interruptibility_state
+                                    .poll_since_interrupt_count() =>
+                        {
+                            // if we are interrupted and we have reached the limit
+                            // then we should:
+                            //
+                            // * return Interrupted None if the last poll was ready
+                            // * ??
+                            self.interrupted_and_notified = true;
+                            self.fn_interrupt_poll_run();
+                            Poll::Ready(Some(PollOutcome::Interrupted(None)))
+                        }
+                        _ => {
+                            self.interrupted_and_notified = true;
+                            self.fn_interrupt_poll_run();
+                            Poll::Ready(Some(PollOutcome::Interrupted(None)))
+                        }
+                    }
                 }
                 None => {
                     let poll_stream = self.stream.as_mut().poll_next(cx);
@@ -147,7 +166,15 @@ where
                     poll_stream.map(|item_opt| item_opt.map(PollOutcome::NoInterrupt))
                 }
             }
+        };
+
+        if poll.is_ready() {
+            // Reset this for the next item.
+            self.has_pending = false;
+            self.item_polled_is_counted = false;
         }
+
+        poll
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

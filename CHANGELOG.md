@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 (2024-01-03)
+
+* Fix `PollNextN` to correctly not double count pending futures.
+
+
 ## 0.2.0 (2024-01-03)
 
 * Add `InterruptibilityState::set_fn_interrupt_poll_item` to run arbitrary function when interruption is activated and the underlying `Stream` returns `Poll::Ready(..)`.

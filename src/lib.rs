@@ -18,16 +18,16 @@
 //! Add the following to `Cargo.toml`
 //!
 //! ```toml
-//! interruptible = "0.2.0"
+//! interruptible = "0.2.1"
 //!
 //! # Enables `InterruptibleStreamExt`
-//! interruptible = { version = "0.2.0", features = ["stream"] }
+//! interruptible = { version = "0.2.1", features = ["stream"] }
 //!
 //! # Enables:
 //! #
 //! # * `InterruptibleFutureExt::{interruptible_control_ctrl_c, interruptible_result_ctrl_c}`
 //! # * `InterruptibleStreamExt::interruptible_ctrl_c` if the `"stream"` feature is also enabled.
-//! interruptible = { version = "0.2.0", features = ["ctrl_c"] }
+//! interruptible = { version = "0.2.1", features = ["ctrl_c"] }
 //! ```
 //!
 //! # Examples

@@ -1,8 +1,9 @@
 use std::fmt::{self, Debug};
 
+use own::{OwnedOrMutRef, OwnedOrRef};
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{InterruptSignal, InterruptStrategy, Interruptibility, OwnedOrMutRef, OwnedOrRef};
+use crate::{InterruptSignal, InterruptStrategy, Interruptibility};
 
 type FnInterrupt<'intx> = Box<dyn Fn() + 'intx>;
 

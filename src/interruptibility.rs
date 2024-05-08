@@ -1,6 +1,7 @@
+use own::OwnedOrMutRef;
 use tokio::sync::mpsc;
 
-use crate::{owned_or_mut_ref::OwnedOrMutRef, InterruptSignal, InterruptStrategy};
+use crate::{InterruptSignal, InterruptStrategy};
 
 /// Specifies interruptibility support of the application.
 ///

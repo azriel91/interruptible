@@ -1,12 +1,13 @@
 use futures::stream::Stream;
+use own::OwnedOrMutRef;
 use tokio::sync::mpsc;
 
 #[cfg(feature = "ctrl_c")]
 use tokio::sync::mpsc::error::SendError;
 
 use crate::{
-    owned_or_mut_ref::OwnedOrMutRef, InterruptSignal, InterruptStrategy, Interruptibility,
-    InterruptibilityState, InterruptibleStream,
+    InterruptSignal, InterruptStrategy, Interruptibility, InterruptibilityState,
+    InterruptibleStream,
 };
 
 /// Provides the `.interruptible()` method for `Stream`s to stop producing

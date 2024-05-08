@@ -116,19 +116,19 @@
 //!
 //! [`interrupt_strategy`]: https://docs.rs/interruptible/latest/interrupt_strategy/index.html
 
+// Re-exports
+pub use own::{OwnedOrMutRef, OwnedOrRef};
+
 pub use crate::{
     interrupt_signal::InterruptSignal, interruptible_future_control::InterruptibleFutureControl,
     interruptible_future_ext::InterruptibleFutureExt,
-    interruptible_future_result::InterruptibleFutureResult, owned_or_mut_ref::OwnedOrMutRef,
-    owned_or_ref::OwnedOrRef,
+    interruptible_future_result::InterruptibleFutureResult,
 };
 
 mod interrupt_signal;
 mod interruptible_future_control;
 mod interruptible_future_ext;
 mod interruptible_future_result;
-mod owned_or_mut_ref;
-mod owned_or_ref;
 
 #[cfg(feature = "stream")]
 pub use crate::{

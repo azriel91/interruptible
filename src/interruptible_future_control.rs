@@ -9,9 +9,10 @@ use futures::{
     future::Future,
     task::{Context, Poll},
 };
+use own::OwnedOrMutRef;
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{InterruptSignal, OwnedOrMutRef};
+use crate::InterruptSignal;
 
 pub struct InterruptibleFutureControl<'rx, B, T, Fut> {
     /// Underlying future that returns a value and `ControlFlow`.

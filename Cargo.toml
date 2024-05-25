@@ -33,3 +33,6 @@ tokio = { version = "1", features = ["macros", "rt", "time"] }
 default = []
 stream = ["tokio/rt"]
 ctrl_c = ["tokio/rt", "tokio/signal"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }

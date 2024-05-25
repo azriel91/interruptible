@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 (2024-05-25)
+
+* Removed `build.rs` cfg lint workaround.
+* Update dependency versions.
+
+
 ## 0.2.2 (2024-05-09)
 
 * Use `own::{OwnedOrRef, OwnedOrMutRef}`.

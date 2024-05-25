@@ -1,6 +1,6 @@
 [package]
 name = "interruptible"
-version = "0.2.2"
+version = "0.2.3"
 description = "Stops a future producer or stream from producing values when interrupted."
 documentation = "https://docs.rs/interruptible/"
 authors = ["Azriel Hoh <azriel91@gmail.com>"]
@@ -20,7 +20,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 futures = "0.3.30"
-own = "0.1.0"
+own = "0.1.1"
 tokio = { version = "1", features = ["sync"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -33,3 +33,6 @@ tokio = { version = "1", features = ["macros", "rt", "time"] }
 default = []
 stream = ["tokio/rt"]
 ctrl_c = ["tokio/rt", "tokio/signal"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }

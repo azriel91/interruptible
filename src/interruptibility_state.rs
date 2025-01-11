@@ -47,7 +47,7 @@ pub struct InterruptibilityState<'rx, 'intx> {
     fn_interrupt_poll_item: Option<OwnedOrRef<'intx, FnInterrupt<'intx>>>,
 }
 
-impl<'rx, 'intx> Debug for InterruptibilityState<'rx, 'intx> {
+impl Debug for InterruptibilityState<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InterruptibilityState")
             .field("interruptibility", &self.interruptibility)

@@ -23,7 +23,7 @@ pub struct InterruptibleFutureControl<'rx, B, T, Fut> {
     marker: PhantomData<(B, T)>,
 }
 
-impl<'rx, B, T, Fut> fmt::Debug for InterruptibleFutureControl<'rx, B, T, Fut> {
+impl<B, T, Fut> fmt::Debug for InterruptibleFutureControl<'_, B, T, Fut> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InterruptibleFutureControl")
             .field("future", &"..")
@@ -52,9 +52,9 @@ where
 }
 
 // `B` does not need to be `Unpin` as it is only used in `PhantomData`.
-impl<'rx, B, T, Fut> Unpin for InterruptibleFutureControl<'rx, B, T, Fut> where Fut: Unpin {}
+impl<B, T, Fut> Unpin for InterruptibleFutureControl<'_, B, T, Fut> where Fut: Unpin {}
 
-impl<'rx, B, T, Fut> Future for InterruptibleFutureControl<'rx, B, T, Fut>
+impl<B, T, Fut> Future for InterruptibleFutureControl<'_, B, T, Fut>
 where
     Fut: Future<Output = ControlFlow<B, T>>,
     B: From<(T, InterruptSignal)>,

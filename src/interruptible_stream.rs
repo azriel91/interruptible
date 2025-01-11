@@ -33,7 +33,7 @@ pub struct InterruptibleStream<'rx, 'intx, S> {
     item_polled_is_counted: bool,
 }
 
-impl<'rx, 'intx, S> fmt::Debug for InterruptibleStream<'rx, 'intx, S> {
+impl<S> fmt::Debug for InterruptibleStream<'_, '_, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InterruptibleStream")
             .field("stream", &"..")
@@ -120,7 +120,7 @@ where
     }
 }
 
-impl<'rx, 'intx, S> Stream for InterruptibleStream<'rx, 'intx, S>
+impl<S> Stream for InterruptibleStream<'_, '_, S>
 where
     S: Stream,
 {

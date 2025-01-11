@@ -22,7 +22,7 @@ pub struct InterruptibleFutureResult<'rx, T, E, Fut> {
     marker: PhantomData<(T, E)>,
 }
 
-impl<'rx, T, E, Fut> fmt::Debug for InterruptibleFutureResult<'rx, T, E, Fut> {
+impl<T, E, Fut> fmt::Debug for InterruptibleFutureResult<'_, T, E, Fut> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InterruptibleFutureResult")
             .field("future", &"..")
@@ -48,7 +48,7 @@ where
     }
 }
 
-impl<'rx, T, E, Fut> Future for InterruptibleFutureResult<'rx, T, E, Fut>
+impl<T, E, Fut> Future for InterruptibleFutureResult<'_, T, E, Fut>
 where
     Fut: Future<Output = Result<T, E>>,
     E: From<(T, InterruptSignal)>,

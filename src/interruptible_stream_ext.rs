@@ -345,7 +345,11 @@ mod tests {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
-            if n < 3 { Some((n, n + 1)) } else { None }
+            if n < 3 {
+                Some((n, n + 1))
+            } else {
+                None
+            }
         })
         .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 0).into());
 
@@ -367,7 +371,11 @@ mod tests {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
-            if n < 3 { Some((n, n + 1)) } else { None }
+            if n < 3 {
+                Some((n, n + 1))
+            } else {
+                None
+            }
         })
         .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 1).into());
 
@@ -394,7 +402,11 @@ mod tests {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
-            if n < 10 { Some((n, n + 1)) } else { None }
+            if n < 10 {
+                Some((n, n + 1))
+            } else {
+                None
+            }
         })
         .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 2).into());
 
@@ -432,7 +444,11 @@ mod tests {
                 yield_now().await;
                 yield_now().await;
             }
-            if n < 10 { Some((n, n + 1)) } else { None }
+            if n < 10 {
+                Some((n, n + 1))
+            } else {
+                None
+            }
         })
         .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 2).into());
 
@@ -464,7 +480,11 @@ mod tests {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
-            if n < 10 { Some((n, n + 1)) } else { None }
+            if n < 10 {
+                Some((n, n + 1))
+            } else {
+                None
+            }
         })
         .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 3).into());
 
@@ -501,7 +521,11 @@ mod tests {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
-            if n < 10 { Some((n, n + 1)) } else { None }
+            if n < 10 {
+                Some((n, n + 1))
+            } else {
+                None
+            }
         })
         .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 6).into());
 
@@ -777,7 +801,11 @@ mod tests {
         let (_interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
-            if n < 3 { Some((n, n + 1)) } else { None }
+            if n < 3 {
+                Some((n, n + 1))
+            } else {
+                None
+            }
         })
         .interruptible_with(Interruptibility::poll_next_n(interrupt_rx.into(), 1).into());
 
@@ -801,7 +829,11 @@ mod tests {
         let (interrupt_tx, interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
 
         let mut interruptible_stream = stream::unfold(0u32, move |n| async move {
-            if n < 3 { Some((n, n + 1)) } else { None }
+            if n < 3 {
+                Some((n, n + 1))
+            } else {
+                None
+            }
         })
         .interruptible(interrupt_rx.into());
 

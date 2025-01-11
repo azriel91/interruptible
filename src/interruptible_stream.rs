@@ -211,12 +211,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fn_interrupt_poll_item_is_run_only_when_poll_returns_ready()
-    -> Result<(), Box<dyn std::error::Error>> {
+    async fn fn_interrupt_poll_item_is_run_only_when_poll_returns_ready(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         macro_rules! interruptible_stream {
             ($interruptibility_state:ident) => {
                 stream::unfold(0u32, move |n| async move {
-                    if n < 3 { Some((n, n + 1)) } else { None }
+                    if n < 3 {
+                        Some((n, n + 1))
+                    } else {
+                        None
+                    }
                 })
                 .interruptible_with($interruptibility_state)
             };

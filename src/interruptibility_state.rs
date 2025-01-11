@@ -446,8 +446,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn is_interrupted_returns_true_when_interrupt_activated()
-    -> Result<(), Box<dyn std::error::Error>> {
+    async fn is_interrupted_returns_true_when_interrupt_activated(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
         let interrupt_rx = &mut interrupt_rx;
 
@@ -498,8 +498,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_fn_interrupt_activate_runs_when_interrupt_activated()
-    -> Result<(), Box<dyn std::error::Error>> {
+    async fn set_fn_interrupt_activate_runs_when_interrupt_activated(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let (interrupt_tx, mut interrupt_rx) = mpsc::channel::<InterruptSignal>(16);
         let interrupt_rx = &mut interrupt_rx;
 

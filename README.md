@@ -1,4 +1,4 @@
-# 🗂️ interruptible
+# 🛑 interruptible
 
 [![Crates.io](https://img.shields.io/crates/v/interruptible.svg)](https://crates.io/crates/interruptible)
 [![docs.rs](https://img.shields.io/docsrs/interruptible)](https://docs.rs/interruptible)
